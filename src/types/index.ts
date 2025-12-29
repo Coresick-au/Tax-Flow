@@ -39,6 +39,7 @@ export type IncomeCategory =
     | 'dividends'
     | 'interest'
     | 'government_payment'
+    | 'ato_summary'
     | 'other';
 
 // ==================== Property Types ====================

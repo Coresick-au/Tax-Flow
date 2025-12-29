@@ -158,6 +158,7 @@ export function Income() {
                                 onChange={(e) => setFormData(prev => ({ ...prev, category: e.target.value as IncomeCategory }))}
                                 className="w-full px-3 py-2 rounded-lg bg-background-elevated border border-border text-text-primary"
                             >
+                                <option value="ato_summary">📋 ATO Payment Summary / PAYG</option>
                                 <option value="salary">Salary / Wages</option>
                                 <option value="dividends">Dividends</option>
                                 <option value="interest">Bank Interest</option>

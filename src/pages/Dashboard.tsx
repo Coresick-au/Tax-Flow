@@ -8,46 +8,12 @@ import {
     Pencil,
     Link2,
     Eye,
-    EyeOff,
     CheckCircle,
 } from 'lucide-react';
-import {
-    AreaChart,
-    Area,
-    XAxis,
-    YAxis,
-    Tooltip,
-    ResponsiveContainer,
-} from 'recharts';
 import { useTaxFlowStore } from '../stores/taxFlowStore';
 import { DashboardLayout } from '../components/layout';
 import { StatCard, Card, CardHeader, Button } from '../components/ui';
 import { DeductionModal } from '../components/modals/DeductionModal';
-
-// Mock data for the financial trend chart
-const mockChartData = [
-    { month: 'Jul', income: 4200, expenses: 1800 },
-    { month: 'Aug', income: 4500, expenses: 2100 },
-    { month: 'Sep', income: 4300, expenses: 1900 },
-    { month: 'Oct', income: 4800, expenses: 2400 },
-    { month: 'Nov', income: 5100, expenses: 2200 },
-    { month: 'Dec', income: 5400, expenses: 2600 },
-    { month: 'Jan', income: 5200, expenses: 2300 },
-    { month: 'Feb', income: 5600, expenses: 2100 },
-    { month: 'Mar', income: 5900, expenses: 2500 },
-    { month: 'Apr', income: 6200, expenses: 2400 },
-    { month: 'May', income: 6500, expenses: 2700 },
-    { month: 'Jun', income: 6800, expenses: 2500 },
-];
-
-// Mock recent activity data
-const mockActivity = [
-    { date: 'Oct 24', type: 'Expense', description: 'Officeworks Melbourne', category: 'Stationery', amount: -120.00 },
-    { date: 'Oct 22', type: 'Income', description: 'Monthly Salary', category: 'Salary & Wages', amount: 4280.00 },
-    { date: 'Oct 20', type: 'Deduction', description: 'Union Membership Fees', category: 'Professional Fees', amount: -45.00 },
-    { date: 'Oct 18', type: 'Expense', description: 'Telstra Bill (Oct)', category: 'Internet & Phone', amount: -89.00 },
-    { date: 'Oct 15', type: 'Transfer', description: 'To Savings Account', category: 'Internal', amount: -1000.00 },
-];
 
 function getTypeColor(type: string): string {
     switch (type) {
@@ -82,6 +48,7 @@ export function Dashboard() {
         deductionCount,
         userProfile,
         auditRiskLevel,
+        recentActivity,
         refreshDashboard,
     } = useTaxFlowStore();
 
@@ -228,59 +195,12 @@ export function Dashboard() {
                             </div>
                         }
                     />
-                    <div className="h-64">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={mockChartData}>
-                                <defs>
-                                    <linearGradient id="incomeGradient" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.4} />
-                                        <stop offset="95%" stopColor="#10b981" stopOpacity={0.05} />
-                                    </linearGradient>
-                                    <linearGradient id="expenseGradient" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor="#22d3ee" stopOpacity={0.2} />
-                                        <stop offset="95%" stopColor="#22d3ee" stopOpacity={0.02} />
-                                    </linearGradient>
-                                </defs>
-                                <XAxis
-                                    dataKey="month"
-                                    axisLine={false}
-                                    tickLine={false}
-                                    tick={{ fill: '#8b949e', fontSize: 12 }}
-                                />
-                                <YAxis
-                                    axisLine={false}
-                                    tickLine={false}
-                                    tick={{ fill: '#8b949e', fontSize: 12 }}
-                                    tickFormatter={(value) => `$${value / 1000}k`}
-                                />
-                                <Tooltip
-                                    contentStyle={{
-                                        backgroundColor: '#1c2128',
-                                        border: '1px solid #30363d',
-                                        borderRadius: '8px',
-                                        color: '#f0f6fc',
-                                    }}
-                                    formatter={(value: number | undefined) => [value ? `$${value.toLocaleString()}` : '$0', '']}
-                                />
-                                <Area
-                                    type="monotone"
-                                    dataKey="income"
-                                    stroke="#10b981"
-                                    strokeWidth={2}
-                                    fill="url(#incomeGradient)"
-                                    name="Income"
-                                />
-                                <Area
-                                    type="monotone"
-                                    dataKey="expenses"
-                                    stroke="#22d3ee"
-                                    strokeWidth={2}
-                                    fill="url(#expenseGradient)"
-                                    name="Expenses"
-                                    strokeDasharray="5 5"
-                                />
-                            </AreaChart>
-                        </ResponsiveContainer>
+                    <div className="h-64 flex items-center justify-center">
+                        <div className="text-center text-text-muted">
+                            <TrendingUp className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                            <p className="text-sm">Add income and expenses to see your financial trends</p>
+                            <p className="text-xs mt-1">Data will appear as you track your finances</p>
+                        </div>
                     </div>
                 </Card>
 
@@ -399,21 +319,31 @@ export function Dashboard() {
                                 </tr>
                             </thead>
                             <tbody className="text-sm">
-                                {mockActivity.map((item, index) => (
-                                    <tr key={index} className="border-t border-border-muted">
-                                        <td className="py-3 text-text-secondary">{item.date}</td>
-                                        <td className="py-3">
-                                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getTypeColor(item.type)}`}>
-                                                {item.type}
-                                            </span>
-                                        </td>
-                                        <td className="py-3 text-text-primary">{item.description}</td>
-                                        <td className="py-3 text-text-secondary">{item.category}</td>
-                                        <td className={`py-3 text-right font-medium ${item.amount >= 0 ? 'text-success' : 'text-text-primary'}`}>
-                                            {formatCurrency(item.amount)}
+                                {recentActivity.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={5} className="py-8 text-center text-text-muted">
+                                            No recent activity. Add income or expenses to see them here.
                                         </td>
                                     </tr>
-                                ))}
+                                ) : (
+                                    recentActivity.map((item, index) => (
+                                        <tr key={index} className="border-t border-border-muted">
+                                            <td className="py-3 text-text-secondary">
+                                                {new Date(item.date).toLocaleDateString('en-AU', { month: 'short', day: 'numeric' })}
+                                            </td>
+                                            <td className="py-3">
+                                                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getTypeColor(item.type)}`}>
+                                                    {item.type}
+                                                </span>
+                                            </td>
+                                            <td className="py-3 text-text-primary">{item.description}</td>
+                                            <td className="py-3 text-text-secondary">{item.category}</td>
+                                            <td className={`py-3 text-right font-medium ${item.amount.toNumber() >= 0 ? 'text-success' : 'text-text-primary'}`}>
+                                                {formatCurrency(item.amount.toNumber())}
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
                             </tbody>
                         </table>
                     </div>

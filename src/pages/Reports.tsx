@@ -43,6 +43,116 @@ export function Reports() {
         }
     };
 
+    const handleExportPDF = () => {
+        // Create a printable version of the tax summary
+        const printContent = `
+            <html>
+            <head>
+                <title>TaxFlow Australia - Tax Summary FY ${currentFinancialYear}</title>
+                <style>
+                    body { font-family: Arial, sans-serif; padding: 40px; color: #1f2937; }
+                    h1 { color: #10b981; margin-bottom: 10px; }
+                    h2 { color: #374151; margin-top: 30px; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px; }
+                    .summary-row { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #e5e7eb; }
+                    .label { color: #6b7280; }
+                    .value { font-weight: bold; }
+                    .total { background: #f3f4f6; padding: 15px; margin: 10px 0; border-radius: 8px; }
+                    .total .value { color: #10b981; font-size: 1.25em; }
+                    .tax { color: #ef4444; }
+                    .risk-section { margin-top: 20px; padding: 15px; border-radius: 8px; }
+                    .risk-low { background: #d1fae5; }
+                    .risk-medium { background: #fef3c7; }
+                    .risk-high { background: #fee2e2; }
+                    table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+                    th, td { padding: 10px; text-align: left; border-bottom: 1px solid #e5e7eb; }
+                    th { background: #f9fafb; font-weight: 600; }
+                    .footer { margin-top: 40px; font-size: 0.85em; color: #9ca3af; text-align: center; }
+                </style>
+            </head>
+            <body>
+                <h1>TaxFlow Australia</h1>
+                <p>Tax Summary Report for Financial Year ${currentFinancialYear}</p>
+                <p>Generated: ${new Date().toLocaleDateString('en-AU', { dateStyle: 'full' })}</p>
+                
+                <h2>Income Summary</h2>
+                <div class="summary-row">
+                    <span class="label">Gross Income</span>
+                    <span class="value">$${totalIncome.toNumber().toLocaleString()}</span>
+                </div>
+                <div class="summary-row">
+                    <span class="label">Total Deductions</span>
+                    <span class="value">-$${totalDeductions.toNumber().toLocaleString()}</span>
+                </div>
+                <div class="total">
+                    <div class="summary-row" style="border: none;">
+                        <span class="label">Taxable Income</span>
+                        <span class="value">$${estimatedTaxableIncome.toNumber().toLocaleString()}</span>
+                    </div>
+                </div>
+                
+                <h2>Estimated Tax Liability</h2>
+                <div class="summary-row">
+                    <span class="label">Income Tax</span>
+                    <span class="value tax">$${estimatedTaxPayable.toNumber().toLocaleString()}</span>
+                </div>
+                <div class="summary-row">
+                    <span class="label">Medicare Levy (2%)</span>
+                    <span class="value tax">$${medicareLevy.toNumber().toLocaleString()}</span>
+                </div>
+                <div class="total">
+                    <div class="summary-row" style="border: none;">
+                        <span class="label">Total Estimated Tax</span>
+                        <span class="value tax">$${estimatedTaxPayable.plus(medicareLevy).toNumber().toLocaleString()}</span>
+                    </div>
+                </div>
+                
+                <h2>Safety Check Summary</h2>
+                <div class="risk-section risk-${auditRiskLevel}">
+                    <strong>Audit Risk Level: ${auditRiskLevel.toUpperCase()}</strong>
+                    <p>${auditRiskLevel === 'low' ? 'Your deductions are within expected ranges.' :
+                auditRiskLevel === 'medium' ? 'Some deductions are higher than average.' :
+                    'Multiple deductions are significantly above average.'}</p>
+                </div>
+                
+                ${safetyCheckItems.length > 0 ? `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Category</th>
+                            <th>Claimed</th>
+                            <th>ATO Benchmark</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${safetyCheckItems.map(item => `
+                            <tr>
+                                <td>${item.category}</td>
+                                <td>$${item.userAmount.toNumber().toLocaleString()}</td>
+                                <td>$${item.atoAverage.toNumber().toLocaleString()}</td>
+                                <td>${item.status.toUpperCase()}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+                ` : '<p>No deductions analyzed yet.</p>'}
+                
+                <div class="footer">
+                    <p>This is an estimate only. Consult a registered tax agent for professional advice.</p>
+                    <p>Generated by TaxFlow Australia</p>
+                </div>
+            </body>
+            </html>
+        `;
+
+        const printWindow = window.open('', '_blank');
+        if (printWindow) {
+            printWindow.document.write(printContent);
+            printWindow.document.close();
+            printWindow.print();
+        }
+    };
+
     return (
         <DashboardLayout>
             <div className="flex items-center justify-between mb-6">
@@ -50,7 +160,7 @@ export function Reports() {
                     <h1 className="text-2xl font-bold text-text-primary">Financial Reports</h1>
                     <p className="text-text-secondary">Detailed breakdown for FY {currentFinancialYear}</p>
                 </div>
-                <Button variant="secondary">
+                <Button variant="secondary" onClick={handleExportPDF}>
                     <Download className="w-4 h-4 mr-2" />
                     Export PDF
                 </Button>

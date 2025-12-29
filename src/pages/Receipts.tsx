@@ -6,7 +6,7 @@ import { Button } from '../components/ui/Button';
 import { StatCard } from '../components/ui/StatCard';
 import {
     Plus, Receipt as ReceiptIcon, Upload, X, AlertTriangle,
-    Search, Filter, Trash2, FileText
+    Search, Filter, Trash2, FileText, Edit2
 } from 'lucide-react';
 import { useTaxFlowStore } from '../stores/taxFlowStore';
 import { db } from '../database/db';
@@ -35,6 +35,7 @@ export function Receipts() {
     const [searchTerm, setSearchTerm] = useState('');
     const [filterCategory, setFilterCategory] = useState<ExpenseCategory | 'all'>('all');
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const [editingId, setEditingId] = useState<number | null>(null);
 
     const [formData, setFormData] = useState({
         date: '',
@@ -67,13 +68,13 @@ export function Receipts() {
         loadReceipts();
     }, [currentFinancialYear]);
 
-    // Add new receipt
-    const handleAddReceipt = async () => {
+    // Add or Update receipt
+    const handleSaveReceipt = async () => {
         if (!formData.vendor || !formData.amount) return;
 
         const isGreyArea = GREY_AREA_CATEGORIES.includes(formData.category);
 
-        const newReceipt: Omit<Receipt, 'id'> = {
+        const receiptData: Partial<Receipt> = {
             financialYear: currentFinancialYear,
             date: formData.date ? new Date(formData.date) : new Date(),
             vendor: formData.vendor,
@@ -81,17 +82,20 @@ export function Receipts() {
             category: formData.category,
             description: formData.description,
             isGreyArea,
-            createdAt: new Date(),
         };
 
         // Handle file attachment
         if (formData.attachment) {
-            newReceipt.attachmentBlob = formData.attachment;
-            newReceipt.attachmentName = formData.attachment.name;
-            newReceipt.attachmentType = formData.attachment.type;
+            receiptData.attachmentBlob = formData.attachment;
+            receiptData.attachmentName = formData.attachment.name;
+            receiptData.attachmentType = formData.attachment.type;
         }
 
-        await db.receipts.add(newReceipt);
+        if (editingId) {
+            await db.receipts.update(editingId, receiptData);
+        } else {
+            await db.receipts.add({ ...receiptData, createdAt: new Date() } as Receipt);
+        }
 
         // Reload lists and refresh dashboard stats
         const recs = await db.receipts
@@ -111,7 +115,22 @@ export function Receipts() {
             description: '',
             attachment: null,
         });
+        setEditingId(null);
         setShowAddModal(false);
+    };
+
+    // Edit receipt
+    const handleEdit = (receipt: Receipt) => {
+        setFormData({
+            date: new Date(receipt.date).toISOString().split('T')[0],
+            vendor: receipt.vendor,
+            amount: receipt.amount,
+            category: receipt.category,
+            description: receipt.description || '',
+            attachment: null,
+        });
+        setEditingId(receipt.id || null);
+        setShowAddModal(true);
     };
 
     // Delete receipt
@@ -275,7 +294,13 @@ export function Receipts() {
                                                     <span className="text-xs text-text-muted">None</span>
                                                 )}
                                             </td>
-                                            <td className="px-4 py-3">
+                                            <td className="px-4 py-3 flex gap-2 justify-end">
+                                                <button
+                                                    onClick={() => handleEdit(receipt)}
+                                                    className="p-1 rounded hover:bg-accent/20 text-text-muted hover:text-accent transition-colors"
+                                                >
+                                                    <Edit2 className="w-4 h-4" />
+                                                </button>
                                                 <button
                                                     onClick={() => receipt.id && handleDelete(receipt.id)}
                                                     className="p-1 rounded hover:bg-danger/20 text-text-muted hover:text-danger transition-colors"
@@ -292,12 +317,14 @@ export function Receipts() {
                 </Card>
             </div>
 
-            {/* Add Receipt Modal */}
+            {/* Add/Edit Receipt Modal */}
             {showAddModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
                     <div className="bg-background-card rounded-xl border border-border p-6 w-full max-w-lg shadow-xl">
                         <div className="flex items-center justify-between mb-6">
-                            <h2 className="text-xl font-bold text-text-primary">Add Receipt</h2>
+                            <h2 className="text-xl font-bold text-text-primary">
+                                {editingId ? 'Edit Receipt' : 'Add Receipt'}
+                            </h2>
                             <button
                                 onClick={() => setShowAddModal(false)}
                                 className="p-1 rounded hover:bg-background-elevated"
@@ -405,8 +432,8 @@ export function Receipts() {
                         </div>
 
                         <div className="flex gap-3 mt-6">
-                            <Button onClick={handleAddReceipt} className="flex-1">
-                                Save Receipt
+                            <Button onClick={handleSaveReceipt} className="flex-1">
+                                {editingId ? 'Update Receipt' : 'Save Receipt'}
                             </Button>
                             <Button variant="secondary" onClick={() => setShowAddModal(false)}>
                                 Cancel
