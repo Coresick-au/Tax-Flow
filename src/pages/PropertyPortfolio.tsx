@@ -14,7 +14,7 @@ import { DashboardLayout } from '../components/layout';
 import { Card, CardHeader, Button, StatCard, Input, ConfirmDialog } from '../components/ui';
 import { db } from '../database/db';
 import { PropertyDepreciationHelper } from '../components/helpers/PropertyDepreciationHelper';
-import type { Property, PropertyIncome, PropertyExpense } from '../types';
+import type { Property, PropertyIncome, PropertyExpense, PropertyLoan } from '../types';
 
 type PropertyTab = 'income' | 'expenses' | 'maintenance' | 'depreciation' | 'loans' | 'purchase';
 
@@ -83,6 +83,19 @@ export function PropertyPortfolio() {
         isOpen: false, id: null, address: ''
     });
 
+    // Loans state
+    const [propertyLoans, setPropertyLoans] = useState<PropertyLoan[]>([]);
+    const [loanForm, setLoanForm] = useState({
+        lender: '',
+        accountNumber: '',
+        loanStartDate: '',
+        originalPrincipal: '',
+        currentBalance: '',
+        interestRatePAPercent: '',
+        repaymentType: 'principal_and_interest' as 'interest_only' | 'principal_and_interest',
+        annualInterestPaid: '',
+    });
+
     useEffect(() => {
         if (!isInitialized) {
             initialize();
@@ -147,6 +160,12 @@ export function PropertyPortfolio() {
 
             setPropertyExpenses(regularExpenses);
             setMaintenanceRecords(maintenance);
+
+            // Load loans
+            const loans = await db.propertyLoans
+                .where({ propertyId: selectedProperty.id, financialYear: currentFinancialYear })
+                .toArray();
+            setPropertyLoans(loans);
         } catch (error) {
             console.error('Failed to load property data:', error);
         }
@@ -161,7 +180,7 @@ export function PropertyPortfolio() {
         { id: 'expenses', label: 'Recurrent Expenses', count: propertyExpenses.length },
         { id: 'maintenance', label: 'Maintenance Log', count: maintenanceRecords.length },
         { id: 'depreciation', label: 'Depreciation' },
-        { id: 'loans', label: 'Loans' },
+        { id: 'loans', label: 'Loans', count: propertyLoans.length },
         { id: 'purchase', label: 'Purchase Data' },
     ];
 
@@ -460,6 +479,64 @@ export function PropertyPortfolio() {
             other: 'Other',
         };
         return labels[category] || category;
+    };
+
+    // Add loan to database
+    const handleAddLoan = async () => {
+        if (!selectedProperty?.id || !loanForm.lender || !loanForm.annualInterestPaid) return;
+
+        const newLoan: PropertyLoan = {
+            propertyId: selectedProperty.id,
+            financialYear: currentFinancialYear,
+            lender: loanForm.lender,
+            accountNumber: loanForm.accountNumber || undefined,
+            loanStartDate: loanForm.loanStartDate ? new Date(loanForm.loanStartDate) : new Date(),
+            originalPrincipal: loanForm.originalPrincipal || '0',
+            currentBalance: loanForm.currentBalance || '0',
+            interestRatePAPercent: loanForm.interestRatePAPercent || '0',
+            repaymentType: loanForm.repaymentType,
+            annualInterestPaid: loanForm.annualInterestPaid,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+        };
+
+        await db.propertyLoans.add(newLoan);
+
+        // Reload loans
+        const loans = await db.propertyLoans
+            .where({ propertyId: selectedProperty.id, financialYear: currentFinancialYear })
+            .toArray();
+        setPropertyLoans(loans);
+
+        // Reset form
+        setLoanForm({
+            lender: '',
+            accountNumber: '',
+            loanStartDate: '',
+            originalPrincipal: '',
+            currentBalance: '',
+            interestRatePAPercent: '',
+            repaymentType: 'principal_and_interest',
+            annualInterestPaid: '',
+        });
+
+        // Refresh dashboard to update tax calculations
+        refreshDashboard();
+    };
+
+    // Delete loan from database
+    const handleDeleteLoan = async (loanId: number) => {
+        if (!selectedProperty?.id) return;
+
+        await db.propertyLoans.delete(loanId);
+
+        // Reload loans
+        const loans = await db.propertyLoans
+            .where({ propertyId: selectedProperty.id, financialYear: currentFinancialYear })
+            .toArray();
+        setPropertyLoans(loans);
+
+        refreshDashboard();
     };
 
     return (
@@ -1129,7 +1206,7 @@ export function PropertyPortfolio() {
                                                 <label className="block text-xs text-text-muted uppercase mb-1.5">Purchase Date</label>
                                                 <input
                                                     type="date"
-                                                    value={(() => {
+                                                    defaultValue={(() => {
                                                         if (!selectedProperty?.purchaseDate) return '';
                                                         try {
                                                             const date = new Date(selectedProperty.purchaseDate);
@@ -1139,9 +1216,11 @@ export function PropertyPortfolio() {
                                                             return '';
                                                         }
                                                     })()}
-                                                    onChange={async (e) => {
-                                                        if (!selectedProperty?.id) return;
+                                                    key={selectedProperty?.id} // Reset input when property changes
+                                                    onBlur={async (e) => {
+                                                        if (!selectedProperty?.id || !e.target.value) return;
                                                         const newDate = new Date(e.target.value);
+                                                        if (isNaN(newDate.getTime())) return;
                                                         await db.properties.update(selectedProperty.id, {
                                                             purchaseDate: newDate,
                                                             updatedAt: new Date(),
@@ -1309,18 +1388,167 @@ export function PropertyPortfolio() {
 
                                 {activeTab === 'loans' && (
                                     <Card>
-                                        <div className="text-center py-12">
-                                            <div className="w-12 h-12 bg-background-elevated rounded-full flex items-center justify-center mx-auto mb-4">
-                                                <DollarSign className="w-6 h-6 text-text-muted" />
+                                        <CardHeader
+                                            title="Property Loans"
+                                            subtitle="Track loans and record deductible interest for your investment property"
+                                            action={
+                                                <a
+                                                    href="https://www.ato.gov.au/individuals-and-families/investments-and-assets/residential-rental-properties/rental-expenses-to-claim/interest-expenses"
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-sm text-primary hover:underline flex items-center gap-1"
+                                                >
+                                                    ATO Guide: Interest Deductions
+                                                    <ExternalLink className="w-3 h-3" />
+                                                </a>
+                                            }
+                                        />
+
+                                        {/* Add Loan Form */}
+                                        <div className="grid grid-cols-4 gap-4 mb-6 p-4 bg-background-elevated rounded-lg border border-border">
+                                            <Input
+                                                label="LENDER *"
+                                                placeholder="e.g. ANZ, CBA, Macquarie"
+                                                value={loanForm.lender}
+                                                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                                    setLoanForm(prev => ({ ...prev, lender: e.target.value }))
+                                                }
+                                            />
+                                            <Input
+                                                label="ACCOUNT NUMBER"
+                                                placeholder="Optional"
+                                                value={loanForm.accountNumber}
+                                                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                                    setLoanForm(prev => ({ ...prev, accountNumber: e.target.value }))
+                                                }
+                                            />
+                                            <Input
+                                                label="CURRENT BALANCE"
+                                                type="number"
+                                                placeholder="0.00"
+                                                leftIcon={<span className="text-text-muted">$</span>}
+                                                value={loanForm.currentBalance}
+                                                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                                    setLoanForm(prev => ({ ...prev, currentBalance: e.target.value }))
+                                                }
+                                            />
+                                            <Input
+                                                label="INTEREST RATE (% p.a.)"
+                                                type="number"
+                                                step="0.01"
+                                                placeholder="5.50"
+                                                rightIcon={<span className="text-text-muted">%</span>}
+                                                value={loanForm.interestRatePAPercent}
+                                                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                                    setLoanForm(prev => ({ ...prev, interestRatePAPercent: e.target.value }))
+                                                }
+                                            />
+                                            <div>
+                                                <label className="block text-xs text-text-muted mb-1.5">REPAYMENT TYPE</label>
+                                                <select
+                                                    className="w-full px-3 py-2 rounded-lg bg-background-card border border-border text-text-primary"
+                                                    value={loanForm.repaymentType}
+                                                    onChange={(e) =>
+                                                        setLoanForm(prev => ({
+                                                            ...prev,
+                                                            repaymentType: e.target.value as 'interest_only' | 'principal_and_interest'
+                                                        }))
+                                                    }
+                                                >
+                                                    <option value="principal_and_interest">Principal & Interest</option>
+                                                    <option value="interest_only">Interest Only</option>
+                                                </select>
                                             </div>
-                                            <p className="text-text-secondary mb-4">
-                                                Loans section coming soon
-                                            </p>
-                                            <Button variant="secondary" onClick={() => alert("Loan tracking features are coming in a future update.")}>
-                                                <Plus className="w-4 h-4" />
-                                                Add Loan
-                                            </Button>
+                                            <Input
+                                                label={`INTEREST PAID FY${currentFinancialYear.slice(-4)} *`}
+                                                type="number"
+                                                placeholder="0.00"
+                                                leftIcon={<span className="text-text-muted">$</span>}
+                                                value={loanForm.annualInterestPaid}
+                                                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                                    setLoanForm(prev => ({ ...prev, annualInterestPaid: e.target.value }))
+                                                }
+                                                hint="Total interest paid this FY (deductible)"
+                                            />
+                                            <div className="col-span-2 flex items-end">
+                                                <Button onClick={handleAddLoan} className="w-full">
+                                                    <Plus className="w-4 h-4" />
+                                                    Add Loan
+                                                </Button>
+                                            </div>
                                         </div>
+
+                                        {/* Loans Table */}
+                                        {propertyLoans.length === 0 ? (
+                                            <div className="text-center py-8 text-text-muted">
+                                                <DollarSign className="w-10 h-10 mx-auto mb-3 opacity-50" />
+                                                <p>No loans recorded for this property</p>
+                                                <p className="text-sm mt-1">Add a loan above to track interest deductions</p>
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <div className="border border-border rounded-lg overflow-hidden">
+                                                    <table className="w-full">
+                                                        <thead className="bg-background-secondary">
+                                                            <tr className="text-left text-xs text-text-muted uppercase tracking-wider">
+                                                                <th className="px-4 py-3">Lender</th>
+                                                                <th className="px-4 py-3">Account</th>
+                                                                <th className="px-4 py-3 text-right">Balance</th>
+                                                                <th className="px-4 py-3 text-right">Rate</th>
+                                                                <th className="px-4 py-3">Type</th>
+                                                                <th className="px-4 py-3 text-right">Interest Paid (FY)</th>
+                                                                <th className="w-10"></th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {propertyLoans.map((loan) => (
+                                                                <tr key={loan.id} className="border-t border-border hover:bg-background-elevated">
+                                                                    <td className="px-4 py-3 font-medium text-text-primary">{loan.lender}</td>
+                                                                    <td className="px-4 py-3 text-text-secondary">{loan.accountNumber || '-'}</td>
+                                                                    <td className="px-4 py-3 text-right">
+                                                                        ${parseFloat(loan.currentBalance || '0').toLocaleString('en-AU', { minimumFractionDigits: 2 })}
+                                                                    </td>
+                                                                    <td className="px-4 py-3 text-right">{loan.interestRatePAPercent}%</td>
+                                                                    <td className="px-4 py-3">
+                                                                        <span className={`px-2 py-1 rounded text-xs ${loan.repaymentType === 'interest_only'
+                                                                            ? 'bg-warning/20 text-warning'
+                                                                            : 'bg-info/20 text-info'
+                                                                            }`}>
+                                                                            {loan.repaymentType === 'interest_only' ? 'IO' : 'P&I'}
+                                                                        </span>
+                                                                    </td>
+                                                                    <td className="px-4 py-3 text-right font-semibold text-success">
+                                                                        ${parseFloat(loan.annualInterestPaid || '0').toLocaleString('en-AU', { minimumFractionDigits: 2 })}
+                                                                    </td>
+                                                                    <td className="px-4 py-3">
+                                                                        <button
+                                                                            onClick={() => loan.id && handleDeleteLoan(loan.id)}
+                                                                            className="p-1 text-text-muted hover:text-danger hover:bg-danger/10 rounded transition-colors"
+                                                                            title="Delete Loan"
+                                                                        >
+                                                                            <Trash2 className="w-4 h-4" />
+                                                                        </button>
+                                                                    </td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+
+                                                {/* Total Summary */}
+                                                <div className="mt-4 p-4 bg-success/10 border border-success/30 rounded-lg flex justify-between items-center">
+                                                    <div>
+                                                        <p className="text-sm text-text-secondary">Total Deductible Interest (FY{currentFinancialYear.slice(-4)})</p>
+                                                        <p className="text-xs text-text-muted mt-1">
+                                                            This amount will be included in your property expenses
+                                                        </p>
+                                                    </div>
+                                                    <p className="text-2xl font-bold text-success">
+                                                        ${propertyLoans.reduce((sum, loan) => sum + (parseFloat(loan.annualInterestPaid) || 0), 0).toLocaleString('en-AU', { minimumFractionDigits: 2 })}
+                                                    </p>
+                                                </div>
+                                            </>
+                                        )}
                                     </Card>
                                 )}
                             </div>

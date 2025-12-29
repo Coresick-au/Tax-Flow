@@ -4,6 +4,7 @@ import type {
     Property,
     PropertyIncome,
     PropertyExpense,
+    PropertyLoan,
     WorkDeductions,
     DepreciableAsset,
     CryptoTransaction,
@@ -18,6 +19,7 @@ export class TaxFlowDatabase extends Dexie {
     properties!: Table<Property>;
     propertyIncome!: Table<PropertyIncome>;
     propertyExpenses!: Table<PropertyExpense>;
+    propertyLoans!: Table<PropertyLoan>;
     workDeductions!: Table<WorkDeductions>;
     depreciableAssets!: Table<DepreciableAsset>;
     cryptoTransactions!: Table<CryptoTransaction>;
@@ -51,6 +53,11 @@ export class TaxFlowDatabase extends Dexie {
             userProfile: '++id, profileId, financialYear, taxResidency',
             income: '++id, profileId, financialYear, date, category',
             receipts: '++id, profileId, financialYear, date, category, amount'
+        });
+
+        // Version 4: Add property loans table
+        this.version(4).stores({
+            propertyLoans: '++id, propertyId, financialYear, lender'
         });
     }
 }

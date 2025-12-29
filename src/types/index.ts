@@ -122,6 +122,22 @@ export type PropertyExpenseCategory =
     | 'capital_improvement'
     | 'other';
 
+export interface PropertyLoan {
+    id?: number;
+    propertyId: number;
+    financialYear: FinancialYear;
+    lender: string;
+    accountNumber?: string;
+    loanStartDate: Date;
+    originalPrincipal: string;
+    currentBalance: string;
+    interestRatePAPercent: string;
+    repaymentType: 'interest_only' | 'principal_and_interest';
+    annualInterestPaid: string; // Deductible amount for the FY
+    createdAt: Date;
+    updatedAt: Date;
+}
+
 // ==================== Work Deductions ====================
 
 export interface WorkDeductions {
