@@ -8,6 +8,7 @@ export type FinancialYear = string; // e.g., "2024-2025"
 
 export interface UserProfile {
     id?: number;
+    profileId: string; // Unique identifier for this profile (e.g., UUID)
     financialYear: FinancialYear;
     taxResidency: 'resident' | 'non-resident' | 'working-holiday';
     name: string;
@@ -22,6 +23,7 @@ export interface UserProfile {
 
 export interface IncomeRecord {
     id?: number;
+    profileId: string; // Links to UserProfile.profileId
     financialYear: FinancialYear;
     date: Date;
     category: IncomeCategory;
@@ -179,6 +181,7 @@ export interface CapitalGainCalculation {
 
 export interface Receipt {
     id?: number;
+    profileId: string; // Links to UserProfile.profileId
     financialYear: FinancialYear;
     date: Date;
     vendor: string;

@@ -45,6 +45,13 @@ export class TaxFlowDatabase extends Dexie {
         this.version(2).stores({
             income: '++id, financialYear, date, category'
         });
+
+        // Version 3: Add profileId for multi-user support
+        this.version(3).stores({
+            userProfile: '++id, profileId, financialYear, taxResidency',
+            income: '++id, profileId, financialYear, date, category',
+            receipts: '++id, profileId, financialYear, date, category, amount'
+        });
     }
 }
 

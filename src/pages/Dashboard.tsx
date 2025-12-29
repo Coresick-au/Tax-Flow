@@ -7,7 +7,6 @@ import {
     Camera,
     Pencil,
     Link2,
-    Eye,
     CheckCircle,
 } from 'lucide-react';
 import { useTaxFlowStore } from '../stores/taxFlowStore';
@@ -31,6 +30,60 @@ function formatCurrency(amount: number): string {
         currency: 'AUD',
     });
     return amount < 0 ? `-${formatted}` : `+${formatted}`;
+}
+
+/**
+ * Calculate tax deadline information based on current date and financial year
+ * Self-lodgers: Oct 31
+ * Via tax agent: May 15 (if registered by Oct 31)
+ */
+function getTaxDeadlineInfo(financialYear: string): { text: string; variant: 'success' | 'warning' | 'danger'; daysLeft?: number } {
+    const now = new Date();
+    const [_startYear, endYear] = financialYear.split('-').map(Number);
+
+    // Self-lodger deadline: Oct 31 of the year AFTER the FY ends
+    // e.g., FY 2024-2025 (ends June 30, 2025) -> deadline Oct 31, 2025
+    const selfLodgerDeadline = new Date(endYear, 9, 31); // Oct 31 (month is 0-indexed)
+
+    // Tax agent deadline: May 15 of the following year
+    const taxAgentDeadline = new Date(endYear + 1, 4, 15); // May 15 (month is 0-indexed)
+
+    // If we're still within the financial year (before June 30), no deadline yet
+    const fyEndDate = new Date(endYear, 5, 30); // June 30
+    if (now < fyEndDate) {
+        const daysUntilFyEnd = Math.ceil((fyEndDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+        return {
+            text: `FY ends in ${daysUntilFyEnd} days`,
+            variant: 'success'
+        };
+    }
+
+    // Check against self-lodger deadline
+    if (now <= selfLodgerDeadline) {
+        const daysLeft = Math.ceil((selfLodgerDeadline.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+        if (daysLeft <= 0) {
+            return { text: 'Self-lodge deadline is TODAY!', variant: 'danger', daysLeft: 0 };
+        } else if (daysLeft <= 14) {
+            return { text: `Self-lodge due in ${daysLeft} days`, variant: 'warning', daysLeft };
+        } else if (daysLeft <= 30) {
+            return { text: `Self-lodge due in ${daysLeft} days`, variant: 'warning', daysLeft };
+        } else {
+            return { text: `Self-lodge due Oct 31`, variant: 'success', daysLeft };
+        }
+    }
+
+    // Past self-lodger deadline, check tax agent deadline
+    if (now <= taxAgentDeadline) {
+        const daysLeft = Math.ceil((taxAgentDeadline.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+        if (daysLeft <= 14) {
+            return { text: `Self overdue! Agent: ${daysLeft} days`, variant: 'danger', daysLeft };
+        } else {
+            return { text: `Self overdue! Agent due May 15`, variant: 'warning', daysLeft };
+        }
+    }
+
+    // Past both deadlines
+    return { text: 'Tax return OVERDUE - contact ATO', variant: 'danger' };
 }
 
 export function Dashboard() {
@@ -137,14 +190,24 @@ export function Dashboard() {
                     <p className="text-text-secondary">Overview for Financial Year {currentFinancialYear}</p>
                 </div>
                 <div className="flex items-center gap-3">
-                    <Button variant="secondary" size="sm" className="text-warning border-warning">
-                        <AlertTriangle className="w-4 h-4" />
-                        BAS Due in 14 Days
-                    </Button>
-                    <Button variant="ghost" size="sm">
-                        <Eye className="w-4 h-4" />
-                        Privacy Mode
-                    </Button>
+                    {(() => {
+                        const deadline = getTaxDeadlineInfo(currentFinancialYear);
+                        const colorClasses = {
+                            success: 'text-success border-success/50',
+                            warning: 'text-warning border-warning/50',
+                            danger: 'text-danger border-danger/50'
+                        };
+                        return (
+                            <Button variant="secondary" size="sm" className={colorClasses[deadline.variant]}>
+                                {deadline.variant === 'danger' ? (
+                                    <AlertTriangle className="w-4 h-4" />
+                                ) : (
+                                    <CheckCircle className="w-4 h-4" />
+                                )}
+                                {deadline.text}
+                            </Button>
+                        );
+                    })()}
                 </div>
             </div>
 

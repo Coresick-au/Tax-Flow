@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useTaxFlowStore } from '../../stores/taxFlowStore';
 import { Button } from '../ui';
+import { ProfileSwitcher } from '../profile/ProfileSwitcher';
 
 interface SidebarProps {
     isCollapsed?: boolean;
@@ -42,7 +43,6 @@ export function Sidebar({ isCollapsed = false }: SidebarProps) {
         currentFinancialYear,
         availableFinancialYears,
         setFinancialYear,
-        userProfile
     } = useTaxFlowStore();
 
     // Close dropdown when clicking outside
@@ -177,25 +177,9 @@ export function Sidebar({ isCollapsed = false }: SidebarProps) {
                 )}
             </div>
 
-            {/* User Profile */}
+            {/* User Profile Switcher */}
             <div className="p-4 border-t border-border-muted">
-                <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-background-elevated rounded-full flex items-center justify-center">
-                        <span className="text-sm font-medium text-text-secondary">
-                            {userProfile?.name?.charAt(0) || 'U'}
-                        </span>
-                    </div>
-                    {!isCollapsed && (
-                        <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-text-primary truncate">
-                                {userProfile?.name || 'Anonymous'}
-                            </p>
-                            <p className="text-xs text-text-muted truncate">
-                                {userProfile?.occupation || 'Individual (Sole Trader)'}
-                            </p>
-                        </div>
-                    )}
-                </div>
+                <ProfileSwitcher />
             </div>
         </aside>
     );

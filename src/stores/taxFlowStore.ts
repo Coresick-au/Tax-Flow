@@ -11,11 +11,15 @@ interface TaxFlowState {
     isInitialized: boolean;
     isLoading: boolean;
 
+    // Profile management
+    currentProfileId: string | null;
+    availableProfiles: UserProfile[];
+
     // Financial year
     currentFinancialYear: string;
     availableFinancialYears: string[];
 
-    // User profile
+    // User profile (current)
     userProfile: UserProfile | null;
 
     // Tax settings for current year
@@ -42,6 +46,11 @@ interface TaxFlowState {
     calculateTaxPosition: () => Promise<void>;
     calculateSafetyCheck: () => Promise<void>;
     refreshDashboard: () => Promise<void>;
+
+    // Profile management actions
+    createProfile: (name: string, occupation?: string) => Promise<UserProfile>;
+    setCurrentProfile: (profileId: string) => Promise<void>;
+    loadProfiles: () => Promise<void>;
 }
 
 // Get current Australian financial year (July 1 - June 30)
@@ -73,6 +82,8 @@ export const useTaxFlowStore = create<TaxFlowState>((set, get) => ({
     // Initial state
     isInitialized: false,
     isLoading: false,
+    currentProfileId: null,
+    availableProfiles: [],
     currentFinancialYear: getCurrentFinancialYear(),
     availableFinancialYears: getAvailableFinancialYears(),
     userProfile: null,
@@ -98,15 +109,31 @@ export const useTaxFlowStore = create<TaxFlowState>((set, get) => ({
             // Load tax settings for current year
             const taxSettings = await getOrCreateTaxSettings(get().currentFinancialYear);
 
-            // Load user profile for current year
-            const userProfile = await db.userProfile
-                .where('financialYear')
-                .equals(get().currentFinancialYear)
-                .first();
+            // Load all profiles
+            const profiles = await db.userProfile.toArray();
+            const uniqueProfiles = profiles.reduce((acc, profile) => {
+                if (!acc.find(p => p.profileId === profile.profileId)) {
+                    acc.push(profile);
+                }
+                return acc;
+            }, [] as UserProfile[]);
+
+            // Auto-select first profile if exists and none selected
+            let currentProfileId = get().currentProfileId;
+            let userProfile = null;
+
+            if (uniqueProfiles.length > 0 && !currentProfileId) {
+                currentProfileId = uniqueProfiles[0].profileId;
+                userProfile = uniqueProfiles[0];
+            } else if (currentProfileId) {
+                userProfile = uniqueProfiles.find(p => p.profileId === currentProfileId) || null;
+            }
 
             set({
                 taxSettings,
-                userProfile: userProfile || null,
+                availableProfiles: uniqueProfiles,
+                currentProfileId,
+                userProfile,
                 isInitialized: true,
                 isLoading: false,
             });
@@ -363,6 +390,74 @@ export const useTaxFlowStore = create<TaxFlowState>((set, get) => ({
             await get().calculateSafetyCheck();
         } catch (error) {
             console.error('Failed to refresh dashboard:', error);
+        }
+    },
+
+    // Load all available profiles
+    loadProfiles: async () => {
+        try {
+            const profiles = await db.userProfile.toArray();
+            // Get unique profiles by profileId
+            const uniqueProfiles = profiles.reduce((acc, profile) => {
+                if (!acc.find(p => p.profileId === profile.profileId)) {
+                    acc.push(profile);
+                }
+                return acc;
+            }, [] as UserProfile[]);
+
+            set({ availableProfiles: uniqueProfiles });
+        } catch (error) {
+            console.error('Failed to load profiles:', error);
+        }
+    },
+
+    // Create a new profile
+    createProfile: async (name: string, occupation: string = 'Not specified') => {
+        const profileId = crypto.randomUUID();
+        const now = new Date();
+        const { currentFinancialYear } = get();
+
+        const newProfile: UserProfile = {
+            profileId,
+            financialYear: currentFinancialYear,
+            taxResidency: 'resident',
+            name,
+            occupation,
+            createdAt: now,
+            updatedAt: now,
+        };
+
+        await db.userProfile.add(newProfile);
+
+        // Reload profiles and switch to the new one
+        await get().loadProfiles();
+        await get().setCurrentProfile(profileId);
+
+        return newProfile;
+    },
+
+    // Switch to a different profile
+    setCurrentProfile: async (profileId: string) => {
+        set({ isLoading: true, currentProfileId: profileId });
+
+        try {
+            // Find the profile by profileId
+            const profile = await db.userProfile
+                .where('profileId')
+                .equals(profileId)
+                .first();
+
+            set({
+                userProfile: profile || null,
+                currentProfileId: profileId,
+                isLoading: false,
+            });
+
+            // Refresh data for this profile
+            await get().refreshDashboard();
+        } catch (error) {
+            console.error('Failed to switch profile:', error);
+            set({ isLoading: false });
         }
     },
 }));
