@@ -1,0 +1,30 @@
+{
+    "name": "TaxFlow Australia",
+    "short_name": "TaxFlow AU",
+    "description": "Australian Tax Management Application - Local-first, privacy-focused",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#101922",
+    "theme_color": "#2b8cee",
+    "orientation": "portrait-primary",
+    "scope": "/",
+    "icons": [
+        {
+            "src": "/icons/icon-192x192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "any maskable"
+        },
+        {
+            "src": "/icons/icon-512x512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any maskable"
+        }
+    ],
+    "categories": [
+        "finance",
+        "productivity"
+    ],
+    "prefer_related_applications": false
+}

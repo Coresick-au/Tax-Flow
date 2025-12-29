@@ -1,0 +1,112 @@
+@import "tailwindcss";
+
+/* TaxFlow Australia - Premium Dark Theme */
+/* Color palette extracted from design mockups - charcoal/slate with teal/emerald accents */
+
+@theme {
+  /* Background colors - charcoal/slate tones */
+  --color-background: #0d1117;
+  --color-background-secondary: #161b22;
+  --color-background-elevated: #21262d;
+  --color-background-card: #1c2128;
+  
+  /* Primary accent - teal/cyan */
+  --color-primary: #22d3ee;
+  --color-primary-hover: #06b6d4;
+  --color-primary-muted: #164e63;
+  
+  /* Secondary accent - emerald/green */
+  --color-accent: #10b981;
+  --color-accent-hover: #059669;
+  --color-accent-muted: #064e3b;
+  
+  /* Status colors */
+  --color-success: #22c55e;
+  --color-warning: #f59e0b;
+  --color-danger: #ef4444;
+  --color-info: #3b82f6;
+  
+  /* Text colors */
+  --color-text-primary: #f0f6fc;
+  --color-text-secondary: #8b949e;
+  --color-text-muted: #6e7681;
+  --color-text-inverse: #0d1117;
+  
+  /* Border colors */
+  --color-border: #30363d;
+  --color-border-muted: #21262d;
+  
+  /* Chart colors */
+  --color-chart-income: #22d3ee;
+  --color-chart-expense: #f87171;
+  --color-chart-fill: rgba(16, 185, 129, 0.3);
+  
+  /* Risk indicator colors */
+  --color-risk-low: #22c55e;
+  --color-risk-medium: #f59e0b;
+  --color-risk-high: #ef4444;
+  
+  /* Fonts */
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  
+  /* Border radius */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  
+  /* Shadows for dark theme */
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-elevated: 0 4px 6px rgba(0, 0, 0, 0.5), 0 2px 4px rgba(0, 0, 0, 0.4);
+}
+
+/* Base styles */
+html {
+  background-color: var(--color-background);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background-color: var(--color-background);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* Scrollbar styling for dark theme */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-background-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
+}
+
+/* Focus styles */
+*:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Selection */
+::selection {
+  background-color: var(--color-primary-muted);
+  color: var(--color-text-primary);
+}
