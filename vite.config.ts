@@ -5,4 +5,10 @@ import tailwindcss from '@tailwindcss/vite'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  server: {
+    hmr: true,
+  },
+  optimizeDeps: {
+    include: ['react', 'react-dom', 'zustand', 'recharts', 'lucide-react', 'decimal.js', 'dexie'],
+  },
 })
