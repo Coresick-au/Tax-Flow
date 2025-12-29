@@ -1,4 +1,4 @@
-import Decimal from 'decimal.js';
+
 
 /**
  * Capital Revenue Guard
@@ -78,7 +78,6 @@ const REPAIR_KEYWORDS = [
 export function classifyExpense(
     category: string,
     description: string = '',
-    amount?: Decimal
 ): ExpenseClassification {
     const normalizedCategory = category.trim();
     const normalizedDesc = description.toLowerCase().trim();

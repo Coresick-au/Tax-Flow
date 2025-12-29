@@ -4,7 +4,8 @@ import { Card, CardHeader } from '../components/ui/Card';
 import { Input } from '../components/ui/Input';
 import { Button } from '../components/ui/Button';
 import { StatCard } from '../components/ui/StatCard';
-import { Plus, TrendingUp, TrendingDown, Coins, DollarSign } from 'lucide-react';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
+import { Plus, TrendingUp, TrendingDown, Coins, DollarSign, Trash2 } from 'lucide-react';
 import { useTaxFlowStore } from '../stores/taxFlowStore';
 import { db } from '../database/db';
 import type { CryptoTransaction } from '../types';
@@ -14,8 +15,11 @@ export function Crypto() {
     const { currentFinancialYear, isInitialized, initialize } = useTaxFlowStore();
     const [transactions, setTransactions] = useState<CryptoTransaction[]>([]);
     const [showAddForm, setShowAddForm] = useState(false);
+    const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; id: number | null; asset: string }>({
+        isOpen: false, id: null, asset: ''
+    });
     const [formData, setFormData] = useState({
-        type: 'buy' as 'buy' | 'sell',
+        type: 'buy' as 'buy' | 'sell' | 'initial_balance',
         assetName: '',
         date: '',
         price: '',
@@ -58,6 +62,24 @@ export function Crypto() {
 
     const totalFees = transactions
         .reduce((sum, t) => sum + parseFloat(t.fees || '0'), 0);
+
+    // Show delete confirmation
+    const handleDelete = (tx: CryptoTransaction) => {
+        setDeleteConfirm({
+            isOpen: true,
+            id: tx.id || null,
+            asset: tx.assetName
+        });
+    };
+
+    // Actually delete after confirmation
+    const confirmDelete = async () => {
+        if (deleteConfirm.id) {
+            await db.cryptoTransactions.delete(deleteConfirm.id);
+            setTransactions(prev => prev.filter(t => t.id !== deleteConfirm.id));
+        }
+        setDeleteConfirm({ isOpen: false, id: null, asset: '' });
+    };
 
     // Add new transaction
     const handleAddTransaction = async () => {
@@ -257,18 +279,19 @@ export function Crypto() {
                     <Card>
                         <CardHeader
                             title="Add Transaction"
-                            subtitle="Record a buy or sell transaction"
+                            subtitle="Record a buy, sell, or existing holdings"
                         />
                         <div className="grid grid-cols-4 gap-4 mb-4">
                             <div>
                                 <label className="block text-xs text-text-muted mb-1.5">TYPE</label>
                                 <select
                                     value={formData.type}
-                                    onChange={(e) => setFormData(prev => ({ ...prev, type: e.target.value as 'buy' | 'sell' }))}
+                                    onChange={(e) => setFormData(prev => ({ ...prev, type: e.target.value as 'buy' | 'sell' | 'initial_balance' }))}
                                     className="w-full px-3 py-2 rounded-lg bg-background-elevated border border-border text-text-primary"
                                 >
                                     <option value="buy">Buy</option>
                                     <option value="sell">Sell</option>
+                                    <option value="initial_balance">Initial Balance</option>
                                 </select>
                             </div>
                             <Input
@@ -355,6 +378,7 @@ export function Crypto() {
                                     <th className="px-4 py-3 text-right">Price</th>
                                     <th className="px-4 py-3 text-right">Fees</th>
                                     <th className="px-4 py-3">Exchange</th>
+                                    <th className="w-10"></th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -373,9 +397,11 @@ export function Crypto() {
                                             <td className="px-4 py-3">
                                                 <span className={`px-2 py-1 rounded text-xs font-medium ${tx.type === 'buy'
                                                     ? 'bg-success/20 text-success'
-                                                    : 'bg-warning/20 text-warning'
+                                                    : tx.type === 'sell'
+                                                        ? 'bg-warning/20 text-warning'
+                                                        : 'bg-info/20 text-info'
                                                     }`}>
-                                                    {tx.type.toUpperCase()}
+                                                    {tx.type === 'initial_balance' ? 'INITIAL' : tx.type.toUpperCase()}
                                                 </span>
                                             </td>
                                             <td className="px-4 py-3 text-text-primary font-medium">
@@ -393,6 +419,14 @@ export function Crypto() {
                                             <td className="px-4 py-3 text-text-secondary">
                                                 {tx.exchange || '-'}
                                             </td>
+                                            <td className="px-4 py-3 text-right">
+                                                <button
+                                                    onClick={() => handleDelete(tx)}
+                                                    className="p-1 rounded hover:bg-danger/20 text-text-muted hover:text-danger transition-colors"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            </td>
                                         </tr>
                                     ))
                                 )}
@@ -401,6 +435,16 @@ export function Crypto() {
                     </div>
                 </Card>
             </div>
+
+            {/* Delete Confirmation Dialog */}
+            <ConfirmDialog
+                isOpen={deleteConfirm.isOpen}
+                title="Delete Transaction"
+                message={`Are you sure you want to delete this ${deleteConfirm.asset} transaction? This will affect your capital gains calculations.`}
+                confirmText="Delete"
+                onConfirm={confirmDelete}
+                onCancel={() => setDeleteConfirm({ isOpen: false, id: null, asset: '' })}
+            />
         </DashboardLayout>
     );
 }

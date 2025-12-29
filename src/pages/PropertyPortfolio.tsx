@@ -7,14 +7,16 @@ import {
     DollarSign,
     Wrench,
     ExternalLink,
+    Trash2,
 } from 'lucide-react';
 import { useTaxFlowStore } from '../stores/taxFlowStore';
 import { DashboardLayout } from '../components/layout';
-import { Card, CardHeader, Button, StatCard, Input } from '../components/ui';
+import { Card, CardHeader, Button, StatCard, Input, ConfirmDialog } from '../components/ui';
 import { db } from '../database/db';
+import { PropertyDepreciationHelper } from '../components/helpers/PropertyDepreciationHelper';
 import type { Property, PropertyIncome, PropertyExpense } from '../types';
 
-type PropertyTab = 'income' | 'expenses' | 'maintenance' | 'loans' | 'purchase';
+type PropertyTab = 'income' | 'expenses' | 'maintenance' | 'depreciation' | 'loans' | 'purchase';
 
 export function PropertyPortfolio() {
     const { initialize, isInitialized, currentFinancialYear, refreshDashboard } = useTaxFlowStore();
@@ -22,7 +24,6 @@ export function PropertyPortfolio() {
     const [activeTab, setActiveTab] = useState<PropertyTab>('income');
     const [searchQuery, setSearchQuery] = useState('');
     const [properties, setProperties] = useState<Property[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
     const [showArchived, setShowArchived] = useState(false);
 
     // Income state
@@ -78,6 +79,10 @@ export function PropertyPortfolio() {
         date: '',
     });
 
+    const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; id: number | null; address: string }>({
+        isOpen: false, id: null, address: ''
+    });
+
     useEffect(() => {
         if (!isInitialized) {
             initialize();
@@ -87,7 +92,6 @@ export function PropertyPortfolio() {
     // Load properties from database
     useEffect(() => {
         const loadProperties = async () => {
-            setIsLoading(true);
             try {
                 const dbProperties = await db.properties
                     .where('financialYear')
@@ -102,8 +106,6 @@ export function PropertyPortfolio() {
                 }
             } catch (error) {
                 console.error('Failed to load properties:', error);
-            } finally {
-                setIsLoading(false);
             }
         };
 
@@ -158,15 +160,12 @@ export function PropertyPortfolio() {
         { id: 'income', label: 'Income' },
         { id: 'expenses', label: 'Recurrent Expenses', count: propertyExpenses.length },
         { id: 'maintenance', label: 'Maintenance Log', count: maintenanceRecords.length },
+        { id: 'depreciation', label: 'Depreciation' },
         { id: 'loans', label: 'Loans' },
         { id: 'purchase', label: 'Purchase Data' },
     ];
 
-    const getYieldColor = (yieldPercent: number) => {
-        if (yieldPercent >= 4) return 'text-success';
-        if (yieldPercent >= 2) return 'text-warning';
-        return 'text-danger';
-    };
+
 
     // State for editing property
     const [isEditing, setIsEditing] = useState(false);
@@ -261,6 +260,26 @@ export function PropertyPortfolio() {
             setProperties(prev => prev.map(p => p.id === updated.id ? updated : p));
             setSelectedProperty(updated);
         }
+    };
+
+    // Delete property
+    const handleDeletePropertyRequest = () => {
+        if (!selectedProperty) return;
+        setDeleteConfirm({
+            isOpen: true,
+            id: selectedProperty.id || null,
+            address: selectedProperty.address
+        });
+    };
+
+    const confirmDeleteProperty = async () => {
+        if (deleteConfirm.id) {
+            await db.properties.delete(deleteConfirm.id);
+            const remaining = properties.filter(p => p.id !== deleteConfirm.id);
+            setProperties(remaining);
+            setSelectedProperty(remaining.length > 0 ? remaining[0] : null);
+        }
+        setDeleteConfirm({ isOpen: false, id: null, address: '' });
     };
 
     // Save income to database
@@ -412,6 +431,25 @@ export function PropertyPortfolio() {
         });
     };
 
+    const handleDeleteCostBase = async (indexToDelete: number) => {
+        if (!selectedProperty?.id || !selectedProperty.costBase) return;
+
+        // Remove item at index
+        const updatedCostBase = selectedProperty.costBase.filter((_, index) => index !== indexToDelete);
+
+        await db.properties.update(selectedProperty.id, {
+            costBase: updatedCostBase,
+            updatedAt: new Date(),
+        });
+
+        // Reload property
+        const updated = await db.properties.get(selectedProperty.id);
+        if (updated) {
+            setSelectedProperty(updated);
+            setProperties(prev => prev.map(p => p.id === updated.id ? updated : p));
+        }
+    };
+
     const getCostBaseLabel = (category: string) => {
         const labels: Record<string, string> = {
             purchase_price: 'Purchase Price',
@@ -452,13 +490,26 @@ export function PropertyPortfolio() {
                         <Card className="mb-4 p-3">
                             <h3 className="font-medium text-sm mb-3">{isEditing ? 'Edit Property' : 'Add New Property'}</h3>
                             <div className="space-y-2">
-                                <Input
-                                    placeholder="Street address"
-                                    value={newPropertyForm.address}
-                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                                        setNewPropertyForm(prev => ({ ...prev, address: e.target.value }))
-                                    }
-                                />
+                                <div className="flex gap-2 mb-2">
+                                    <select
+                                        value={newPropertyForm.propertyType}
+                                        onChange={(e) => setNewPropertyForm(prev => ({ ...prev, propertyType: e.target.value as any }))}
+                                        className="w-1/3 px-2 py-2 rounded-lg bg-background-elevated border border-border text-text-primary text-sm"
+                                    >
+                                        <option value="house">House</option>
+                                        <option value="unit">Unit</option>
+                                        <option value="townhouse">Townhouse</option>
+                                        <option value="commercial">Commercial</option>
+                                    </select>
+                                    <Input
+                                        placeholder="Street address"
+                                        value={newPropertyForm.address}
+                                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                            setNewPropertyForm(prev => ({ ...prev, address: e.target.value }))
+                                        }
+                                        className="flex-1"
+                                    />
+                                </div>
                                 <div className="flex gap-2">
                                     <Input
                                         placeholder="Suburb"
@@ -518,27 +569,39 @@ export function PropertyPortfolio() {
                         {properties
                             .filter(p => showArchived ? true : p.status !== 'inactive')
                             .map((property) => {
-                                const yieldPercent = 4.2; // Mock yield
+                                // Calculate approximate yield for list view
+                                // Note: This is an estimation as we don't load full income/expenses for all properties here for performance
+                                // In a real app we'd query this efficiently. For now, we show a placeholder or basic stat.
+                                const isSelected = selectedProperty?.id === property.id;
+
                                 return (
                                     <button
                                         key={property.id}
                                         onClick={() => setSelectedProperty(property)}
-                                        className={`w-full p-3 rounded-lg text-left transition-colors ${selectedProperty?.id === property.id
+                                        className={`w-full p-3 rounded-lg text-left transition-colors ${isSelected
                                             ? 'bg-accent/20 border border-accent'
                                             : 'bg-background-card border border-border-muted hover:border-primary'
                                             }`}
                                     >
                                         <div className="flex gap-3">
-                                            <div className="w-12 h-12 rounded-lg bg-background-elevated flex items-center justify-center">
-                                                <Building2 className="w-6 h-6 text-text-muted" />
+                                            <div className="w-12 h-12 rounded-lg bg-background-elevated flex items-center justify-center overflow-hidden">
+                                                {property.imageUrl ? (
+                                                    <img
+                                                        src={property.imageUrl}
+                                                        alt={property.address}
+                                                        className="w-full h-full object-cover"
+                                                    />
+                                                ) : (
+                                                    <Building2 className="w-6 h-6 text-text-muted" />
+                                                )}
                                             </div>
                                             <div className="flex-1 min-w-0">
                                                 <p className="font-medium text-text-primary truncate">{property.address}</p>
                                                 <p className="text-xs text-text-muted truncate">
                                                     {property.suburb} {property.state} {property.postcode}
                                                 </p>
-                                                <div className={`text-xs font-medium mt-1 ${getYieldColor(yieldPercent)}`}>
-                                                    {yieldPercent.toFixed(1)}% Yield
+                                                <div className="text-xs font-medium mt-1 text-text-secondary">
+                                                    {property.status.toUpperCase()}
                                                 </div>
                                             </div>
                                         </div>
@@ -554,21 +617,102 @@ export function PropertyPortfolio() {
                         <>
                             {/* Property Header */}
                             <div className="flex items-start justify-between mb-6">
-                                <div>
-                                    <div className="flex items-center gap-2 text-sm text-text-muted mb-2">
-                                        <span>🏠</span>
-                                        <span>/ Portfolio / {selectedProperty.address}</span>
+                                <div className="flex gap-4">
+                                    {/* Property Image */}
+                                    <div className="relative group">
+                                        <div className="w-24 h-24 rounded-lg bg-background-elevated flex items-center justify-center overflow-hidden border-2 border-border">
+                                            {selectedProperty.imageUrl ? (
+                                                <img
+                                                    src={selectedProperty.imageUrl}
+                                                    alt={selectedProperty.address}
+                                                    className="w-full h-full object-cover"
+                                                />
+                                            ) : (
+                                                <Building2 className="w-10 h-10 text-text-muted" />
+                                            )}
+                                        </div>
+                                        <label className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer rounded-lg flex items-center justify-center">
+                                            <span className="text-white text-xs font-medium">
+                                                {selectedProperty.imageUrl ? 'Change' : 'Add Photo'}
+                                            </span>
+                                            <input
+                                                type="file"
+                                                accept="image/*"
+                                                className="hidden"
+                                                onChange={async (e) => {
+                                                    const file = e.target.files?.[0];
+                                                    if (!file || !selectedProperty?.id) return;
+
+                                                    // Compress and convert to base64
+                                                    const reader = new FileReader();
+                                                    reader.onload = async (event) => {
+                                                        const img = new Image();
+                                                        img.onload = async () => {
+                                                            // Create canvas and resize
+                                                            const canvas = document.createElement('canvas');
+                                                            const maxSize = 400;
+                                                            let width = img.width;
+                                                            let height = img.height;
+
+                                                            if (width > height) {
+                                                                if (width > maxSize) {
+                                                                    height *= maxSize / width;
+                                                                    width = maxSize;
+                                                                }
+                                                            } else {
+                                                                if (height > maxSize) {
+                                                                    width *= maxSize / height;
+                                                                    height = maxSize;
+                                                                }
+                                                            }
+
+                                                            canvas.width = width;
+                                                            canvas.height = height;
+                                                            const ctx = canvas.getContext('2d');
+                                                            ctx?.drawImage(img, 0, 0, width, height);
+
+                                                            const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+
+                                                            await db.properties.update(selectedProperty.id!, {
+                                                                imageUrl: compressedDataUrl,
+                                                                updatedAt: new Date(),
+                                                            });
+
+                                                            const updated = await db.properties.get(selectedProperty.id!);
+                                                            if (updated) {
+                                                                setSelectedProperty(updated);
+                                                                setProperties(prev => prev.map(p => p.id === updated.id ? updated : p));
+                                                            }
+                                                        };
+                                                        img.src = event.target?.result as string;
+                                                    };
+                                                    reader.readAsDataURL(file);
+                                                }}
+                                            />
+                                        </label>
                                     </div>
-                                    <h1 className="text-2xl font-bold text-text-primary">
-                                        {selectedProperty.address}, {selectedProperty.suburb}
-                                    </h1>
-                                    <p className="text-text-secondary">
-                                        {selectedProperty.state} {selectedProperty.postcode}
-                                    </p>
-                                    <div className="flex items-center gap-4 mt-2 text-sm text-text-secondary">
-                                        <span>Ownership: <span className="text-text-primary font-medium">{selectedProperty.ownershipSplit[0]?.percentage}%</span></span>
-                                        <span>Purchased: <span className="text-text-primary font-medium">{selectedProperty.purchaseDate.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}</span></span>
-                                        <span>Cost Base: <span className="text-text-primary font-medium">$850,000</span></span>
+                                    {/* Property Info */}
+                                    <div>
+                                        <div className="flex items-center gap-2 text-sm text-text-muted mb-2">
+                                            <span>🏠</span>
+                                            <span>/ Portfolio / {selectedProperty.address}</span>
+                                        </div>
+                                        <h1 className="text-2xl font-bold text-text-primary">
+                                            {selectedProperty.address}, {selectedProperty.suburb}
+                                        </h1>
+                                        <p className="text-text-secondary">
+                                            {selectedProperty.state} {selectedProperty.postcode}
+                                        </p>
+                                        <div className="flex items-center gap-4 mt-2 text-sm text-text-secondary">
+                                            <span>Ownership: <span className="text-text-primary font-medium">{selectedProperty.ownershipSplit[0]?.percentage}%</span></span>
+                                            <span>Purchased: <span className="text-text-primary font-medium">{selectedProperty.purchaseDate.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}</span></span>
+                                            <span>Cost Base: <span className="text-text-primary font-medium">
+                                                {(() => {
+                                                    const totalCostBase = selectedProperty.costBase?.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0) || 0;
+                                                    return `$${totalCostBase.toLocaleString('en-AU')}`;
+                                                })()}
+                                            </span></span>
+                                        </div>
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-2">
@@ -582,38 +726,81 @@ export function PropertyPortfolio() {
                                     <Button size="sm" onClick={handleEditProperty}>
                                         Edit Details
                                     </Button>
+                                    <Button
+                                        size="sm"
+                                        variant="secondary"
+                                        className="text-danger border-danger/30 hover:bg-danger/10"
+                                        onClick={handleDeletePropertyRequest}
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                    </Button>
                                 </div>
                             </div>
 
                             {/* Stats Row */}
-                            <div className="grid grid-cols-4 gap-4 mb-6">
-                                <StatCard
-                                    title="NET YIELD (YTD)"
-                                    value="4.2%"
-                                    trend={{ value: 0.3 }}
-                                    icon={<TrendingUp className="w-5 h-5 text-success" />}
-                                    iconBgColor="bg-success/20"
-                                />
-                                <StatCard
-                                    title="GROSS INCOME (YTD)"
-                                    value="$42,500"
-                                    icon={<DollarSign className="w-5 h-5 text-accent" />}
-                                    iconBgColor="bg-accent/20"
-                                />
-                                <StatCard
-                                    title="TOTAL EXPENSES (YTD)"
-                                    value="$12,450"
-                                    icon={<DollarSign className="w-5 h-5 text-warning" />}
-                                    iconBgColor="bg-warning/20"
-                                />
-                                <StatCard
-                                    title="MAINTENANCE (YTD)"
-                                    value="$3,200"
-                                    subtitle="▲ High"
-                                    icon={<Wrench className="w-5 h-5 text-danger" />}
-                                    iconBgColor="bg-danger/20"
-                                />
-                            </div>
+                            {(() => {
+                                // Get ownership percentage
+                                const ownershipPercent = selectedProperty.ownershipSplit?.[0]?.percentage ?? 100;
+                                const ownershipFraction = ownershipPercent / 100;
+
+                                // Calculate real-time stats (full property amounts)
+                                const grossIncomeFull = propertyIncome ? (
+                                    (parseFloat(propertyIncome.grossRent) || 0) +
+                                    (parseFloat(propertyIncome.insurancePayouts) || 0) +
+                                    (parseFloat(propertyIncome.otherIncome) || 0)
+                                ) : 0;
+
+                                const operatingExpensesFull = propertyExpenses.reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
+                                const maintenanceExpensesFull = maintenanceRecords.reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
+                                const totalExpensesFull = operatingExpensesFull + maintenanceExpensesFull;
+
+                                // Apply ownership split for claimable amounts
+                                const grossIncome = grossIncomeFull * ownershipFraction;
+                                const totalExpenses = totalExpensesFull * ownershipFraction;
+                                const maintenanceExpenses = maintenanceExpensesFull * ownershipFraction;
+
+                                // Cost base calculation (your share)
+                                const costBaseFull = selectedProperty.costBase?.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0) || 0;
+                                const costBase = costBaseFull * ownershipFraction;
+
+                                const netYield = costBase > 0 ? ((grossIncome - totalExpenses) / costBase) * 100 : 0;
+
+                                const shareLabel = ownershipPercent < 100 ? `Your ${ownershipPercent}% share` : undefined;
+
+                                return (
+                                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                                        <StatCard
+                                            title="NET YIELD (YTD)"
+                                            value={`${netYield.toFixed(1)}%`}
+                                            trend={{ value: 0 }} // Dynamic trend requires history
+                                            subtitle={costBase > 0 ? (shareLabel || "Based on cost base") : "Add cost base data"}
+                                            icon={<TrendingUp className="w-5 h-5 text-success" />}
+                                            iconBgColor="bg-success/20"
+                                        />
+                                        <StatCard
+                                            title="GROSS INCOME (YTD)"
+                                            value={`$${grossIncome.toLocaleString('en-AU')}`}
+                                            subtitle={shareLabel}
+                                            icon={<DollarSign className="w-5 h-5 text-accent" />}
+                                            iconBgColor="bg-accent/20"
+                                        />
+                                        <StatCard
+                                            title="TOTAL EXPENSES (YTD)"
+                                            value={`$${totalExpenses.toLocaleString('en-AU')}`}
+                                            subtitle={shareLabel}
+                                            icon={<DollarSign className="w-5 h-5 text-warning" />}
+                                            iconBgColor="bg-warning/20"
+                                        />
+                                        <StatCard
+                                            title="MAINTENANCE (YTD)"
+                                            value={`$${maintenanceExpenses.toLocaleString('en-AU')}`}
+                                            subtitle={shareLabel || (maintenanceExpenses > 1000 ? "Review for capital works" : "Normal range")}
+                                            icon={<Wrench className="w-5 h-5 text-danger" />}
+                                            iconBgColor="bg-danger/20"
+                                        />
+                                    </div>
+                                );
+                            })()}
 
                             {/* Tabs */}
                             <div className="flex gap-1 border-b border-border-muted mb-6">
@@ -644,7 +831,12 @@ export function PropertyPortfolio() {
                                             title="Add Maintenance Record"
                                             subtitle="Correctly classifying expenses is critical for ATO compliance. Repairs are immediately deductible, while Capital Improvements must be depreciated over time (2.5% p.a.)."
                                             action={
-                                                <a href="#" className="text-sm text-primary hover:underline flex items-center gap-1">
+                                                <a
+                                                    href="https://www.ato.gov.au/individuals-and-families/investments-and-assets/residential-rental-properties/rental-expenses-to-claim/rental-expenses-you-can-claim-now"
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-sm text-primary hover:underline flex items-center gap-1"
+                                                >
                                                     ATO Guide: Repairs vs Improvements
                                                     <ExternalLink className="w-3 h-3" />
                                                 </a>
@@ -932,18 +1124,71 @@ export function PropertyPortfolio() {
                                         />
 
                                         {/* Purchase Summary */}
-                                        <div className="grid grid-cols-2 gap-4 mb-6 p-4 bg-background-elevated rounded-lg">
+                                        <div className="grid grid-cols-3 gap-4 mb-6 p-4 bg-background-elevated rounded-lg">
                                             <div>
-                                                <span className="text-xs text-text-muted uppercase">Purchase Date</span>
-                                                <p className="text-lg font-semibold text-text-primary">
-                                                    {selectedProperty?.purchaseDate
-                                                        ? new Date(selectedProperty.purchaseDate).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
-                                                        : 'Not set'}
-                                                </p>
+                                                <label className="block text-xs text-text-muted uppercase mb-1.5">Purchase Date</label>
+                                                <input
+                                                    type="date"
+                                                    value={(() => {
+                                                        if (!selectedProperty?.purchaseDate) return '';
+                                                        try {
+                                                            const date = new Date(selectedProperty.purchaseDate);
+                                                            if (isNaN(date.getTime())) return '';
+                                                            return date.toISOString().split('T')[0];
+                                                        } catch {
+                                                            return '';
+                                                        }
+                                                    })()}
+                                                    onChange={async (e) => {
+                                                        if (!selectedProperty?.id) return;
+                                                        const newDate = new Date(e.target.value);
+                                                        await db.properties.update(selectedProperty.id, {
+                                                            purchaseDate: newDate,
+                                                            updatedAt: new Date(),
+                                                        });
+                                                        const updated = await db.properties.get(selectedProperty.id);
+                                                        if (updated) {
+                                                            setSelectedProperty(updated);
+                                                            setProperties(prev => prev.map(p => p.id === updated.id ? updated : p));
+                                                        }
+                                                    }}
+                                                    className="w-full px-3 py-2 rounded-lg bg-background-card border border-border text-text-primary text-lg font-semibold"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs text-text-muted uppercase mb-1.5">Your Ownership %</label>
+                                                <div className="flex items-center gap-2">
+                                                    <input
+                                                        type="number"
+                                                        min="0"
+                                                        max="100"
+                                                        value={selectedProperty?.ownershipSplit?.[0]?.percentage ?? 100}
+                                                        onChange={async (e) => {
+                                                            if (!selectedProperty?.id) return;
+                                                            const percentage = Math.min(100, Math.max(0, parseInt(e.target.value) || 0));
+                                                            const updatedOwnership = [{
+                                                                ownerName: selectedProperty.ownershipSplit?.[0]?.ownerName || 'Owner',
+                                                                percentage
+                                                            }];
+                                                            await db.properties.update(selectedProperty.id, {
+                                                                ownershipSplit: updatedOwnership,
+                                                                updatedAt: new Date(),
+                                                            });
+                                                            const updated = await db.properties.get(selectedProperty.id);
+                                                            if (updated) {
+                                                                setSelectedProperty(updated);
+                                                                setProperties(prev => prev.map(p => p.id === updated.id ? updated : p));
+                                                            }
+                                                        }}
+                                                        className="w-full px-3 py-2 rounded-lg bg-background-card border border-border text-text-primary text-lg font-semibold"
+                                                    />
+                                                    <span className="text-lg font-semibold text-text-muted">%</span>
+                                                </div>
+                                                <p className="text-xs text-text-muted mt-1">For joint ownership properties</p>
                                             </div>
                                             <div>
                                                 <span className="text-xs text-text-muted uppercase">Total Cost Base</span>
-                                                <p className="text-lg font-semibold text-accent">
+                                                <p className="text-lg font-semibold text-accent mt-1.5">
                                                     ${totalCostBase.toLocaleString('en-AU', { minimumFractionDigits: 2 })}
                                                 </p>
                                             </div>
@@ -1012,12 +1257,13 @@ export function PropertyPortfolio() {
                                                         <th className="px-4 py-3">Description</th>
                                                         <th className="px-4 py-3">Date</th>
                                                         <th className="px-4 py-3 text-right">Amount</th>
+                                                        <th className="w-10"></th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
                                                     {(!selectedProperty?.costBase || selectedProperty.costBase.length === 0) ? (
                                                         <tr>
-                                                            <td colSpan={4} className="px-4 py-8 text-center text-text-muted">
+                                                            <td colSpan={5} className="px-4 py-8 text-center text-text-muted">
                                                                 No cost base items yet. Add purchase price and other capital costs above.
                                                             </td>
                                                         </tr>
@@ -1036,6 +1282,15 @@ export function PropertyPortfolio() {
                                                                 <td className="px-4 py-3 text-right font-medium">
                                                                     ${parseFloat(item.amount).toLocaleString('en-AU', { minimumFractionDigits: 2 })}
                                                                 </td>
+                                                                <td className="px-4 py-3 text-right">
+                                                                    <button
+                                                                        onClick={() => handleDeleteCostBase(index)}
+                                                                        className="p-1 text-text-muted hover:text-danger hover:bg-danger/10 rounded transition-colors"
+                                                                        title="Delete Item"
+                                                                    >
+                                                                        <Trash2 className="w-4 h-4" />
+                                                                    </button>
+                                                                </td>
                                                             </tr>
                                                         ))
                                                     )}
@@ -1043,6 +1298,13 @@ export function PropertyPortfolio() {
                                             </table>
                                         </div>
                                     </Card>
+                                )}
+
+                                {activeTab === 'depreciation' && selectedProperty && (
+                                    <PropertyDepreciationHelper
+                                        property={selectedProperty}
+                                        onClose={() => setActiveTab('income')}
+                                    />
                                 )}
 
                                 {activeTab === 'loans' && (
@@ -1073,6 +1335,15 @@ export function PropertyPortfolio() {
                     )}
                 </div>
             </div>
+            {/* Delete Confirmation Dialog */}
+            <ConfirmDialog
+                isOpen={deleteConfirm.isOpen}
+                title="Delete Property"
+                message={`Are you sure you want to delete "${deleteConfirm.address}"? This will also delete all associated income and expense records. This action cannot be undone.`}
+                confirmText="Delete Property"
+                onConfirm={confirmDeleteProperty}
+                onCancel={() => setDeleteConfirm({ isOpen: false, id: null, address: '' })}
+            />
         </DashboardLayout>
     );
 }

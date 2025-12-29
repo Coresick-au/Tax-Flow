@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useTaxFlowStore } from '../stores/taxFlowStore';
 import { db } from '../database/db';
 import { DashboardLayout } from '../components/layout';
-import { Card, Button, Input } from '../components/ui';
+import { Card, Button, Input, ConfirmDialog } from '../components/ui';
 import { Plus, DollarSign, Trash2, Edit2, Calendar, FileText } from 'lucide-react';
 import type { IncomeRecord, IncomeCategory } from '../types';
 import Decimal from 'decimal.js';
@@ -13,17 +13,24 @@ export function Income() {
     const [isLoading, setIsLoading] = useState(true);
     const [showAddForm, setShowAddForm] = useState(false);
     const [editingId, setEditingId] = useState<number | null>(null);
+    const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; id: number | null }>({
+        isOpen: false, id: null
+    });
 
     const [formData, setFormData] = useState<{
         category: IncomeCategory;
         amount: string;
+        grossAmount: string;
+        bonuses: string;
         description: string;
         payer: string;
         taxWithheld: string;
         date: string;
     }>({
-        category: 'salary',
+        category: 'ato_summary',
         amount: '',
+        grossAmount: '',
+        bonuses: '',
         description: '',
         payer: '',
         taxWithheld: '',
@@ -55,6 +62,8 @@ export function Income() {
         setFormData({
             category: record.category,
             amount: record.amount,
+            grossAmount: record.grossAmount || '',
+            bonuses: record.bonuses || '',
             description: record.description,
             payer: record.payer || '',
             taxWithheld: record.taxWithheld || '',
@@ -64,12 +73,17 @@ export function Income() {
         setShowAddForm(true);
     };
 
-    const handleDelete = async (id: number) => {
-        if (confirm('Are you sure you want to delete this income record?')) {
-            await db.income.delete(id);
+    const handleDelete = (id: number) => {
+        setDeleteConfirm({ isOpen: true, id });
+    };
+
+    const confirmDelete = async () => {
+        if (deleteConfirm.id) {
+            await db.income.delete(deleteConfirm.id);
             await loadIncome();
             await refreshDashboard();
         }
+        setDeleteConfirm({ isOpen: false, id: null });
     };
 
     const handleSave = async () => {
@@ -81,6 +95,8 @@ export function Income() {
                 date: new Date(formData.date),
                 category: formData.category,
                 amount: formData.amount,
+                grossAmount: formData.grossAmount,
+                bonuses: formData.bonuses,
                 description: formData.description,
                 payer: formData.payer,
                 taxWithheld: formData.taxWithheld,
@@ -98,8 +114,10 @@ export function Income() {
             }
 
             setFormData({
-                category: 'salary',
+                category: 'ato_summary',
                 amount: '',
+                grossAmount: '',
+                bonuses: '',
                 description: '',
                 payer: '',
                 taxWithheld: '',
@@ -190,33 +208,109 @@ export function Income() {
                                 onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
                             />
                         </div>
-                        <div>
-                            <label className="block text-sm text-text-secondary mb-1">Gross Amount</label>
-                            <div className="relative">
-                                <DollarSign className="absolute left-3 top-2.5 w-4 h-4 text-text-muted" />
-                                <Input
-                                    className="pl-9"
-                                    type="number"
-                                    placeholder="0.00"
-                                    value={formData.amount}
-                                    onChange={(e) => setFormData(prev => ({ ...prev, amount: e.target.value }))}
-                                />
-                            </div>
-                        </div>
-                        <div>
-                            <label className="block text-sm text-text-secondary mb-1">Tax Withheld (Optional)</label>
-                            <div className="relative">
-                                <DollarSign className="absolute left-3 top-2.5 w-4 h-4 text-text-muted" />
-                                <Input
-                                    className="pl-9"
-                                    type="number"
-                                    placeholder="0.00"
-                                    value={formData.taxWithheld}
-                                    onChange={(e) => setFormData(prev => ({ ...prev, taxWithheld: e.target.value }))}
-                                />
-                            </div>
-                        </div>
                     </div>
+
+                    {/* Salary/PAYG specific fields with breakdown */}
+                    {(formData.category === 'salary' || formData.category === 'ato_summary') ? (
+                        <>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                                <div>
+                                    <label className="block text-sm text-text-secondary mb-1">Gross Amount (Base Salary)</label>
+                                    <div className="relative">
+                                        <DollarSign className="absolute left-3 top-2.5 w-4 h-4 text-text-muted" />
+                                        <Input
+                                            className="pl-9"
+                                            type="number"
+                                            placeholder="0.00"
+                                            value={formData.grossAmount || ''}
+                                            onChange={(e) => setFormData(prev => {
+                                                const grossAmount = e.target.value;
+                                                const bonuses = prev.bonuses || '0';
+                                                const total = (parseFloat(grossAmount) || 0) + (parseFloat(bonuses) || 0);
+                                                return { ...prev, grossAmount, amount: total.toString() };
+                                            })}
+                                        />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-sm text-text-secondary mb-1">Bonuses & Commissions</label>
+                                    <div className="relative">
+                                        <DollarSign className="absolute left-3 top-2.5 w-4 h-4 text-text-muted" />
+                                        <Input
+                                            className="pl-9"
+                                            type="number"
+                                            placeholder="0.00"
+                                            value={formData.bonuses || ''}
+                                            onChange={(e) => setFormData(prev => {
+                                                const bonuses = e.target.value;
+                                                const grossAmount = prev.grossAmount || '0';
+                                                const total = (parseFloat(grossAmount) || 0) + (parseFloat(bonuses) || 0);
+                                                return { ...prev, bonuses, amount: total.toString() };
+                                            })}
+                                        />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-sm text-text-secondary mb-1">Total Gross Amount</label>
+                                    <div className="relative">
+                                        <DollarSign className="absolute left-3 top-2.5 w-4 h-4 text-text-muted" />
+                                        <Input
+                                            className="pl-9 bg-background-elevated/50"
+                                            type="number"
+                                            placeholder="0.00"
+                                            value={formData.amount}
+                                            readOnly
+                                        />
+                                    </div>
+                                    <p className="text-xs text-text-muted mt-1">Auto-calculated</p>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                                <div>
+                                    <label className="block text-sm text-text-secondary mb-1">PAYGW Tax Withheld</label>
+                                    <div className="relative">
+                                        <DollarSign className="absolute left-3 top-2.5 w-4 h-4 text-text-muted" />
+                                        <Input
+                                            className="pl-9"
+                                            type="number"
+                                            placeholder="0.00"
+                                            value={formData.taxWithheld}
+                                            onChange={(e) => setFormData(prev => ({ ...prev, taxWithheld: e.target.value }))}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        </>
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                            <div>
+                                <label className="block text-sm text-text-secondary mb-1">Amount</label>
+                                <div className="relative">
+                                    <DollarSign className="absolute left-3 top-2.5 w-4 h-4 text-text-muted" />
+                                    <Input
+                                        className="pl-9"
+                                        type="number"
+                                        placeholder="0.00"
+                                        value={formData.amount}
+                                        onChange={(e) => setFormData(prev => ({ ...prev, amount: e.target.value }))}
+                                    />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-sm text-text-secondary mb-1">Tax Withheld (Optional)</label>
+                                <div className="relative">
+                                    <DollarSign className="absolute left-3 top-2.5 w-4 h-4 text-text-muted" />
+                                    <Input
+                                        className="pl-9"
+                                        type="number"
+                                        placeholder="0.00"
+                                        value={formData.taxWithheld}
+                                        onChange={(e) => setFormData(prev => ({ ...prev, taxWithheld: e.target.value }))}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    )}
                     <div className="flex gap-2 mt-4 justify-end">
                         <Button variant="secondary" onClick={() => setShowAddForm(false)}>Cancel</Button>
                         <Button onClick={handleSave}>Save Record</Button>
@@ -271,6 +365,15 @@ export function Income() {
                     ))
                 )}
             </div>
+            {/* Delete Confirmation Dialog */}
+            <ConfirmDialog
+                isOpen={deleteConfirm.isOpen}
+                title="Delete Income Record"
+                message="Are you sure you want to delete this income record? This action cannot be undone."
+                confirmText="Delete"
+                onConfirm={confirmDelete}
+                onCancel={() => setDeleteConfirm({ isOpen: false, id: null })}
+            />
         </DashboardLayout>
     );
 }

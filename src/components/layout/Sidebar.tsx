@@ -13,6 +13,7 @@ import {
     Camera,
     Pencil,
     DollarSign,
+    Scale,
 } from 'lucide-react';
 import { useTaxFlowStore } from '../../stores/taxFlowStore';
 import { Button } from '../ui';
@@ -31,7 +32,8 @@ const navItems = [
     { id: 'crypto', label: 'Crypto & CGT', icon: Coins, path: '/crypto' },
     { id: 'receipts', label: 'Receipts', icon: FileText, path: '/receipts' },
     { id: 'reports', label: 'Reports', icon: FileText, path: '/reports' },
-    { id: 'ato-settings', label: 'ATO Settings', icon: Settings, path: '/settings' },
+    { id: 'ato-settings', label: 'ATO Settings', icon: Scale, path: '/ato-settings' },
+    { id: 'settings', label: 'Settings', icon: Settings, path: '/settings' },
 ];
 
 export function Sidebar({ isCollapsed = false }: SidebarProps) {

@@ -26,10 +26,11 @@ interface UsePWAReturn extends PWAState {
 }
 
 export function usePWA(): UsePWAReturn {
+    // Defensive initialization for SSR/React 19 compatibility
     const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
     const [isInstallable, setIsInstallable] = useState(false);
     const [isInstalled, setIsInstalled] = useState(false);
-    const [isOnline, setIsOnline] = useState(navigator.onLine);
+    const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
 
     useEffect(() => {
         // Check if already installed (standalone mode)

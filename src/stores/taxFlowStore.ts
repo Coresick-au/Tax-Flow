@@ -210,7 +210,22 @@ export const useTaxFlowStore = create<TaxFlowState>((set, get) => ({
         if (!taxSettings) return;
 
         try {
-            // Sum all property income
+            // Fetch properties to get ownership percentages
+            const properties = await db.properties
+                .where('financialYear')
+                .equals(currentFinancialYear)
+                .toArray();
+
+            // Create a map of propertyId -> ownership percentage
+            const ownershipMap = new Map<number, number>();
+            for (const prop of properties) {
+                const percentage = prop.ownershipSplit?.[0]?.percentage ?? 100;
+                if (prop.id) {
+                    ownershipMap.set(prop.id, percentage / 100); // Convert to decimal
+                }
+            }
+
+            // Sum all property income (applying ownership split)
             const propertyIncomes = await db.propertyIncome
                 .where('financialYear')
                 .equals(currentFinancialYear)
@@ -218,10 +233,11 @@ export const useTaxFlowStore = create<TaxFlowState>((set, get) => ({
 
             let totalIncome = new Decimal(0);
             for (const income of propertyIncomes) {
-                totalIncome = totalIncome
-                    .add(income.grossRent || '0')
+                const ownershipFraction = ownershipMap.get(income.propertyId) ?? 1;
+                const propertyTotal = new Decimal(income.grossRent || '0')
                     .add(income.insurancePayouts || '0')
                     .add(income.otherIncome || '0');
+                totalIncome = totalIncome.add(propertyTotal.mul(ownershipFraction));
             }
 
             // Sum general income (salary, dividends, etc)
@@ -270,7 +286,8 @@ export const useTaxFlowStore = create<TaxFlowState>((set, get) => ({
 
             let totalDeductions = new Decimal(0);
             for (const expense of propertyExpenses) {
-                totalDeductions = totalDeductions.add(expense.amount || '0');
+                const ownershipFraction = ownershipMap.get(expense.propertyId) ?? 1;
+                totalDeductions = totalDeductions.add(new Decimal(expense.amount || '0').mul(ownershipFraction));
             }
             for (const receipt of receipts) {
                 totalDeductions = totalDeductions.add(receipt.amount || '0');

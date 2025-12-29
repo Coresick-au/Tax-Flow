@@ -1,15 +1,28 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useTaxFlowStore } from '../stores/taxFlowStore';
 import { DashboardLayout } from '../components/layout';
 import { Card, CardHeader, Button } from '../components/ui';
-import { Download, AlertTriangle, CheckCircle, Info } from 'lucide-react';
+import { Download, AlertTriangle, CheckCircle, Info, ChevronDown, ChevronRight } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
+import { db } from '../database/db';
+import type { IncomeRecord, Receipt, DepreciableAsset, Property, PropertyExpense, WorkDeductions } from '../types';
+import Decimal from 'decimal.js';
+
+interface ReportData {
+    incomeRecords: IncomeRecord[];
+    receipts: Receipt[];
+    assets: DepreciableAsset[];
+    properties: Property[];
+    propertyExpenses: PropertyExpense[];
+    workDeductions: WorkDeductions | null;
+}
 
 export function Reports() {
     const {
         initialize,
         isInitialized,
         currentFinancialYear,
+        currentProfileId,
         estimatedTaxableIncome,
         estimatedTaxPayable,
         totalDeductions,
@@ -17,15 +30,88 @@ export function Reports() {
         auditRiskLevel,
     } = useTaxFlowStore();
 
+    const [reportData, setReportData] = useState<ReportData>({
+        incomeRecords: [],
+        receipts: [],
+        assets: [],
+        properties: [],
+        propertyExpenses: [],
+        workDeductions: null,
+    });
+
+    const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+        income: true,
+        expenses: true,
+        assets: false,
+        wfh: false,
+        property: false,
+    });
+
     useEffect(() => {
         if (!isInitialized) {
             initialize();
         }
     }, [initialize, isInitialized]);
 
+    // Load detailed data
+    useEffect(() => {
+        async function loadReportData() {
+            const incomeRecords = await db.income
+                .where('financialYear')
+                .equals(currentFinancialYear)
+                .toArray();
+
+            const receipts = await db.receipts
+                .where('financialYear')
+                .equals(currentFinancialYear)
+                .toArray();
+
+            const assets = await db.depreciableAssets
+                .where('financialYear')
+                .equals(currentFinancialYear)
+                .toArray();
+
+            const properties = await db.properties
+                .where('financialYear')
+                .equals(currentFinancialYear)
+                .toArray();
+
+            const propertyExpenses = await db.propertyExpenses
+                .where('financialYear')
+                .equals(currentFinancialYear)
+                .toArray();
+
+            const workDeductions = await db.workDeductions
+                .where('financialYear')
+                .equals(currentFinancialYear)
+                .first();
+
+            setReportData({
+                incomeRecords: incomeRecords.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+                receipts: receipts.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+                assets,
+                properties,
+                propertyExpenses,
+                workDeductions: workDeductions || null,
+            });
+        }
+
+        if (isInitialized) {
+            loadReportData();
+        }
+    }, [isInitialized, currentFinancialYear, currentProfileId]);
+
+    const toggleSection = (section: string) => {
+        setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
+    };
+
     // Calculate derived values
-    const medicareLevy = estimatedTaxableIncome.mul(0.02); // Approx 2%
+    const medicareLevy = estimatedTaxableIncome.mul(0.02);
     const totalIncome = estimatedTaxableIncome.plus(totalDeductions);
+
+    // Calculate totals from line items
+    const incomeTotal = reportData.incomeRecords.reduce((sum, r) => sum.plus(r.amount), new Decimal(0));
+    const expenseTotal = reportData.receipts.reduce((sum, r) => sum.plus(r.amount), new Decimal(0));
 
     // Data for charts
     const incomeData = [
@@ -43,103 +129,213 @@ export function Reports() {
         }
     };
 
+    const formatCategory = (cat: string) => cat.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+
     const handleExportPDF = () => {
-        // Create a printable version of the tax summary
+        const { incomeRecords, receipts, assets, workDeductions } = reportData;
+
         const printContent = `
             <html>
             <head>
                 <title>TaxFlow Australia - Tax Summary FY ${currentFinancialYear}</title>
                 <style>
-                    body { font-family: Arial, sans-serif; padding: 40px; color: #1f2937; }
-                    h1 { color: #10b981; margin-bottom: 10px; }
-                    h2 { color: #374151; margin-top: 30px; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px; }
-                    .summary-row { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #e5e7eb; }
+                    body { font-family: Arial, sans-serif; padding: 40px; color: #1f2937; font-size: 12px; }
+                    h1 { color: #10b981; margin-bottom: 5px; font-size: 24px; }
+                    h2 { color: #374151; margin-top: 25px; border-bottom: 2px solid #10b981; padding-bottom: 8px; font-size: 16px; }
+                    h3 { color: #6b7280; margin-top: 15px; font-size: 14px; }
+                    .header-info { color: #6b7280; margin-bottom: 20px; }
+                    .summary-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb; }
                     .label { color: #6b7280; }
                     .value { font-weight: bold; }
-                    .total { background: #f3f4f6; padding: 15px; margin: 10px 0; border-radius: 8px; }
-                    .total .value { color: #10b981; font-size: 1.25em; }
+                    .total { background: #f3f4f6; padding: 12px; margin: 10px 0; border-radius: 8px; }
+                    .total .value { color: #10b981; font-size: 1.1em; }
                     .tax { color: #ef4444; }
-                    .risk-section { margin-top: 20px; padding: 15px; border-radius: 8px; }
-                    .risk-low { background: #d1fae5; }
-                    .risk-medium { background: #fef3c7; }
-                    .risk-high { background: #fee2e2; }
-                    table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-                    th, td { padding: 10px; text-align: left; border-bottom: 1px solid #e5e7eb; }
-                    th { background: #f9fafb; font-weight: 600; }
-                    .footer { margin-top: 40px; font-size: 0.85em; color: #9ca3af; text-align: center; }
+                    .risk-section { margin-top: 15px; padding: 12px; border-radius: 8px; }
+                    .risk-low { background: #d1fae5; border: 1px solid #10b981; }
+                    .risk-medium { background: #fef3c7; border: 1px solid #f59e0b; }
+                    .risk-high { background: #fee2e2; border: 1px solid #ef4444; }
+                    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 11px; }
+                    th, td { padding: 8px; text-align: left; border-bottom: 1px solid #e5e7eb; }
+                    th { background: #f9fafb; font-weight: 600; color: #374151; }
+                    .text-right { text-align: right; }
+                    .footer { margin-top: 40px; font-size: 10px; color: #9ca3af; text-align: center; border-top: 1px solid #e5e7eb; padding-top: 15px; }
+                    .section { page-break-inside: avoid; }
+                    .empty { color: #9ca3af; font-style: italic; padding: 15px; text-align: center; }
                 </style>
             </head>
             <body>
                 <h1>TaxFlow Australia</h1>
-                <p>Tax Summary Report for Financial Year ${currentFinancialYear}</p>
-                <p>Generated: ${new Date().toLocaleDateString('en-AU', { dateStyle: 'full' })}</p>
+                <div class="header-info">
+                    <p><strong>Tax Summary Report</strong> for Financial Year ${currentFinancialYear}</p>
+                    <p>Generated: ${new Date().toLocaleDateString('en-AU', { dateStyle: 'full' })} at ${new Date().toLocaleTimeString('en-AU')}</p>
+                </div>
                 
-                <h2>Income Summary</h2>
-                <div class="summary-row">
-                    <span class="label">Gross Income</span>
-                    <span class="value">$${totalIncome.toNumber().toLocaleString()}</span>
-                </div>
-                <div class="summary-row">
-                    <span class="label">Total Deductions</span>
-                    <span class="value">-$${totalDeductions.toNumber().toLocaleString()}</span>
-                </div>
-                <div class="total">
-                    <div class="summary-row" style="border: none;">
-                        <span class="label">Taxable Income</span>
-                        <span class="value">$${estimatedTaxableIncome.toNumber().toLocaleString()}</span>
+                <!-- INCOME SUMMARY -->
+                <div class="section">
+                    <h2>1. Income Summary</h2>
+                    <div class="summary-row">
+                        <span class="label">Gross Income</span>
+                        <span class="value">$${totalIncome.toNumber().toLocaleString()}</span>
+                    </div>
+                    <div class="summary-row">
+                        <span class="label">Total Deductions</span>
+                        <span class="value">-$${totalDeductions.toNumber().toLocaleString()}</span>
+                    </div>
+                    <div class="total">
+                        <div class="summary-row" style="border: none;">
+                            <span class="label">Taxable Income</span>
+                            <span class="value">$${estimatedTaxableIncome.toNumber().toLocaleString()}</span>
+                        </div>
                     </div>
                 </div>
-                
-                <h2>Estimated Tax Liability</h2>
-                <div class="summary-row">
-                    <span class="label">Income Tax</span>
-                    <span class="value tax">$${estimatedTaxPayable.toNumber().toLocaleString()}</span>
-                </div>
-                <div class="summary-row">
-                    <span class="label">Medicare Levy (2%)</span>
-                    <span class="value tax">$${medicareLevy.toNumber().toLocaleString()}</span>
-                </div>
-                <div class="total">
-                    <div class="summary-row" style="border: none;">
-                        <span class="label">Total Estimated Tax</span>
-                        <span class="value tax">$${estimatedTaxPayable.plus(medicareLevy).toNumber().toLocaleString()}</span>
-                    </div>
-                </div>
-                
-                <h2>Safety Check Summary</h2>
-                <div class="risk-section risk-${auditRiskLevel}">
-                    <strong>Audit Risk Level: ${auditRiskLevel.toUpperCase()}</strong>
-                    <p>${auditRiskLevel === 'low' ? 'Your deductions are within expected ranges.' :
-                auditRiskLevel === 'medium' ? 'Some deductions are higher than average.' :
-                    'Multiple deductions are significantly above average.'}</p>
-                </div>
-                
-                ${safetyCheckItems.length > 0 ? `
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Category</th>
-                            <th>Claimed</th>
-                            <th>ATO Benchmark</th>
-                            <th>Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${safetyCheckItems.map(item => `
+
+                <!-- INCOME DETAILS -->
+                <div class="section">
+                    <h3>1.1 Income Line Items</h3>
+                    ${incomeRecords.length > 0 ? `
+                    <table>
+                        <thead>
                             <tr>
-                                <td>${item.category}</td>
-                                <td>$${item.userAmount.toNumber().toLocaleString()}</td>
-                                <td>$${item.atoAverage.toNumber().toLocaleString()}</td>
-                                <td>${item.status.toUpperCase()}</td>
+                                <th>Date</th>
+                                <th>Payer</th>
+                                <th>Category</th>
+                                <th>Description</th>
+                                <th class="text-right">Gross Amount</th>
+                                <th class="text-right">Tax Withheld</th>
                             </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-                ` : '<p>No deductions analyzed yet.</p>'}
+                        </thead>
+                        <tbody>
+                            ${incomeRecords.map(r => `
+                                <tr>
+                                    <td>${new Date(r.date).toLocaleDateString('en-AU')}</td>
+                                    <td>${r.payer || 'N/A'}</td>
+                                    <td>${formatCategory(r.category)}</td>
+                                    <td>${r.description || '-'}</td>
+                                    <td class="text-right">$${parseFloat(r.amount).toLocaleString()}</td>
+                                    <td class="text-right">${r.taxWithheld ? '$' + parseFloat(r.taxWithheld).toLocaleString() : '-'}</td>
+                                </tr>
+                            `).join('')}
+                            <tr style="font-weight: bold; background: #f9fafb;">
+                                <td colspan="4">Total Income</td>
+                                <td class="text-right">$${incomeTotal.toNumber().toLocaleString()}</td>
+                                <td></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    ` : '<p class="empty">No income records entered.</p>'}
+                </div>
+                
+                <!-- TAX LIABILITY -->
+                <div class="section">
+                    <h2>2. Estimated Tax Liability</h2>
+                    <div class="summary-row">
+                        <span class="label">Income Tax</span>
+                        <span class="value tax">$${estimatedTaxPayable.toNumber().toLocaleString()}</span>
+                    </div>
+                    <div class="summary-row">
+                        <span class="label">Medicare Levy (2%)</span>
+                        <span class="value tax">$${medicareLevy.toNumber().toLocaleString()}</span>
+                    </div>
+                    <div class="total">
+                        <div class="summary-row" style="border: none;">
+                            <span class="label">Total Estimated Tax</span>
+                            <span class="value tax">$${estimatedTaxPayable.plus(medicareLevy).toNumber().toLocaleString()}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- WORK EXPENSES DETAILS -->
+                <div class="section">
+                    <h2>3. Work-Related Expenses</h2>
+                    ${receipts.length > 0 ? `
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Vendor</th>
+                                <th>Category</th>
+                                <th>Description</th>
+                                <th class="text-right">Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${receipts.map(r => `
+                                <tr>
+                                    <td>${new Date(r.date).toLocaleDateString('en-AU')}</td>
+                                    <td>${r.vendor}</td>
+                                    <td>${formatCategory(r.category)}</td>
+                                    <td>${r.description || '-'}</td>
+                                    <td class="text-right">$${parseFloat(r.amount).toLocaleString()}</td>
+                                </tr>
+                            `).join('')}
+                            <tr style="font-weight: bold; background: #f9fafb;">
+                                <td colspan="4">Total Work Expenses</td>
+                                <td class="text-right">$${expenseTotal.toNumber().toLocaleString()}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    ` : '<p class="empty">No work expenses entered.</p>'}
+                </div>
+
+                <!-- WORK FROM HOME -->
+                <div class="section">
+                    <h2>4. Work From Home Deduction</h2>
+                    ${workDeductions ? `
+                    <div class="summary-row">
+                        <span class="label">Method Used</span>
+                        <span class="value">${workDeductions.wfhMethod === 'fixed_rate' ? 'Fixed Rate (67c/hour)' : 'Actual Cost Method'}</span>
+                    </div>
+                    <div class="summary-row">
+                        <span class="label">Total WFH Hours</span>
+                        <span class="value">${workDeductions.wfhHours || 0} hours</span>
+                    </div>
+                    <div class="summary-row">
+                        <span class="label">Calculated Deduction</span>
+                        <span class="value">$${(parseFloat(String(workDeductions.wfhHours || 0)) * 0.67).toFixed(2)}</span>
+                    </div>
+                    ` : '<p class="empty">No WFH deductions entered.</p>'}
+                </div>
+
+                <!-- ASSET DEPRECIATION -->
+                <div class="section">
+                    <h2>5. Asset Depreciation Schedule</h2>
+                    ${assets.length > 0 ? `
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Item</th>
+                                <th>Purchase Date</th>
+                                <th class="text-right">Cost</th>
+                                <th>Effective Life</th>
+                                <th>Method</th>
+                                <th class="text-right">This Year Decline</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${assets.map(a => {
+            const annualDepreciation = a.depreciationMethod === 'diminishing'
+                ? (parseFloat(a.cost) * (2 / a.effectiveLifeYears))
+                : (parseFloat(a.cost) / a.effectiveLifeYears);
+            return `
+                                <tr>
+                                    <td>${a.itemName}</td>
+                                    <td>${new Date(a.purchaseDate).toLocaleDateString('en-AU')}</td>
+                                    <td class="text-right">$${parseFloat(a.cost).toLocaleString()}</td>
+                                    <td>${a.effectiveLifeYears} years</td>
+                                    <td>${a.depreciationMethod === 'diminishing' ? 'Diminishing Value' : 'Prime Cost'}</td>
+                                    <td class="text-right">$${annualDepreciation.toFixed(2)}</td>
+                                </tr>
+                            `}).join('')}
+                        </tbody>
+                    </table>
+                    ` : '<p class="empty">No depreciable assets over $300.</p>'}
+                </div>
+
+                </div>
                 
                 <div class="footer">
-                    <p>This is an estimate only. Consult a registered tax agent for professional advice.</p>
-                    <p>Generated by TaxFlow Australia</p>
+                    <p><strong>Disclaimer:</strong> This is an estimate only. Consult a registered tax agent for professional advice.</p>
+                    <p>Generated by TaxFlow Australia • ${new Date().toISOString()}</p>
                 </div>
             </body>
             </html>
@@ -152,6 +348,19 @@ export function Reports() {
             printWindow.print();
         }
     };
+
+    const SectionHeader = ({ title, section, count }: { title: string; section: string; count?: number }) => (
+        <button
+            onClick={() => toggleSection(section)}
+            className="w-full flex items-center justify-between p-3 hover:bg-background-elevated rounded-lg transition-colors"
+        >
+            <div className="flex items-center gap-2">
+                {expandedSections[section] ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                <span className="font-medium">{title}</span>
+                {count !== undefined && <span className="text-xs text-text-muted">({count} items)</span>}
+            </div>
+        </button>
+    );
 
     return (
         <DashboardLayout>
@@ -191,7 +400,7 @@ export function Reports() {
                                         ))}
                                     </Pie>
                                     <Tooltip
-                                        formatter={(value: any) => [`$${Number(value).toLocaleString()}`, 'Amount']}
+                                        formatter={(value: number) => [`$${Number(value).toLocaleString()}`, 'Amount']}
                                         contentStyle={{ backgroundColor: '#1F2937', borderColor: '#374151', color: '#F9FAFB' }}
                                     />
                                     <Legend />
@@ -224,9 +433,8 @@ export function Reports() {
                 <Card>
                     <CardHeader
                         title="Safety Check Report"
-                        subtitle="Detailed analysis of ATO compliance risks"
+                        subtitle="ATO compliance analysis"
                     />
-
                     <div className="space-y-4">
                         <div className={`p-4 rounded-lg border ${auditRiskLevel === 'high' ? 'bg-danger/10 border-danger/20' :
                             auditRiskLevel === 'medium' ? 'bg-warning/10 border-warning/20' :
@@ -237,15 +445,15 @@ export function Reports() {
                                 <h3 className="font-bold text-lg capitalize">{auditRiskLevel} Audit Risk</h3>
                             </div>
                             <p className="text-sm opacity-90">
-                                {auditRiskLevel === 'low' ? 'Your deductions are within expected ranges for your occupation.' :
-                                    auditRiskLevel === 'medium' ? 'Some deductions are higher than average. Ensure you have receipts.' :
-                                        'Multiple deductions are significantly above average. Audit probability is elevated.'}
+                                {auditRiskLevel === 'low' ? 'Your deductions are within expected ranges.' :
+                                    auditRiskLevel === 'medium' ? 'Some deductions are higher than average.' :
+                                        'Multiple deductions significantly above average.'}
                             </p>
                         </div>
 
-                        <div className="border border-border rounded-lg overflow-hidden">
+                        <div className="border border-border rounded-lg overflow-hidden max-h-64 overflow-y-auto">
                             <table className="w-full text-sm">
-                                <thead className="bg-background-secondary">
+                                <thead className="bg-background-secondary sticky top-0">
                                     <tr className="text-left text-xs text-text-muted uppercase">
                                         <th className="px-4 py-3">Category</th>
                                         <th className="px-4 py-3 text-right">Claimed</th>
@@ -256,7 +464,7 @@ export function Reports() {
                                 <tbody>
                                     {safetyCheckItems.length === 0 ? (
                                         <tr>
-                                            <td colSpan={4} className="px-4 py-8 text-center text-text-muted">No deductions analyzed yet</td>
+                                            <td colSpan={4} className="px-4 py-8 text-center text-text-muted">No deductions analyzed</td>
                                         </tr>
                                     ) : (
                                         safetyCheckItems.map((item, idx) => (
@@ -275,13 +483,145 @@ export function Reports() {
                                 </tbody>
                             </table>
                         </div>
-
-                        <div className="flex items-start gap-2 text-xs text-text-muted mt-4">
-                            <Info className="w-4 h-4 flex-shrink-0" />
-                            <p>Benchmarks based on 2023-2024 ATO statistics for your selected occupation. High claims are allowed but must be substantiated.</p>
-                        </div>
                     </div>
                 </Card>
+            </div>
+
+            {/* Detailed Line Items */}
+            <div className="space-y-4">
+                {/* Income Details */}
+                <Card>
+                    <SectionHeader title="Income Details" section="income" count={reportData.incomeRecords.length} />
+                    {expandedSections.income && (
+                        <div className="border-t border-border">
+                            {reportData.incomeRecords.length === 0 ? (
+                                <p className="p-4 text-text-muted text-center">No income records entered</p>
+                            ) : (
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-sm">
+                                        <thead className="bg-background-secondary">
+                                            <tr className="text-left text-xs text-text-muted uppercase">
+                                                <th className="px-4 py-3">Date</th>
+                                                <th className="px-4 py-3">Payer</th>
+                                                <th className="px-4 py-3">Category</th>
+                                                <th className="px-4 py-3">Description</th>
+                                                <th className="px-4 py-3 text-right">Amount</th>
+                                                <th className="px-4 py-3 text-right">Tax Withheld</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {reportData.incomeRecords.map((r, idx) => (
+                                                <tr key={idx} className="border-t border-border hover:bg-background-elevated">
+                                                    <td className="px-4 py-3">{new Date(r.date).toLocaleDateString('en-AU')}</td>
+                                                    <td className="px-4 py-3">{r.payer || '-'}</td>
+                                                    <td className="px-4 py-3 capitalize">{formatCategory(r.category)}</td>
+                                                    <td className="px-4 py-3 text-text-muted">{r.description || '-'}</td>
+                                                    <td className="px-4 py-3 text-right font-medium text-success">${parseFloat(r.amount).toLocaleString()}</td>
+                                                    <td className="px-4 py-3 text-right text-text-muted">{r.taxWithheld ? `$${parseFloat(r.taxWithheld).toLocaleString()}` : '-'}</td>
+                                                </tr>
+                                            ))}
+                                            <tr className="bg-background-elevated font-semibold">
+                                                <td colSpan={4} className="px-4 py-3">Total</td>
+                                                <td className="px-4 py-3 text-right text-success">${incomeTotal.toNumber().toLocaleString()}</td>
+                                                <td></td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </Card>
+
+                {/* Expense Details */}
+                <Card>
+                    <SectionHeader title="Work Expenses" section="expenses" count={reportData.receipts.length} />
+                    {expandedSections.expenses && (
+                        <div className="border-t border-border">
+                            {reportData.receipts.length === 0 ? (
+                                <p className="p-4 text-text-muted text-center">No expense receipts entered</p>
+                            ) : (
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-sm">
+                                        <thead className="bg-background-secondary">
+                                            <tr className="text-left text-xs text-text-muted uppercase">
+                                                <th className="px-4 py-3">Date</th>
+                                                <th className="px-4 py-3">Vendor</th>
+                                                <th className="px-4 py-3">Category</th>
+                                                <th className="px-4 py-3">Description</th>
+                                                <th className="px-4 py-3 text-right">Amount</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {reportData.receipts.map((r, idx) => (
+                                                <tr key={idx} className="border-t border-border hover:bg-background-elevated">
+                                                    <td className="px-4 py-3">{new Date(r.date).toLocaleDateString('en-AU')}</td>
+                                                    <td className="px-4 py-3">{r.vendor}</td>
+                                                    <td className="px-4 py-3 capitalize">{formatCategory(r.category)}</td>
+                                                    <td className="px-4 py-3 text-text-muted">{r.description || '-'}</td>
+                                                    <td className="px-4 py-3 text-right font-medium text-danger">${parseFloat(r.amount).toLocaleString()}</td>
+                                                </tr>
+                                            ))}
+                                            <tr className="bg-background-elevated font-semibold">
+                                                <td colSpan={4} className="px-4 py-3">Total</td>
+                                                <td className="px-4 py-3 text-right text-danger">${expenseTotal.toNumber().toLocaleString()}</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </Card>
+
+                {/* Asset Depreciation */}
+                <Card>
+                    <SectionHeader title="Asset Depreciation Schedule" section="assets" count={reportData.assets.length} />
+                    {expandedSections.assets && (
+                        <div className="border-t border-border">
+                            {reportData.assets.length === 0 ? (
+                                <p className="p-4 text-text-muted text-center">No depreciable assets entered</p>
+                            ) : (
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-sm">
+                                        <thead className="bg-background-secondary">
+                                            <tr className="text-left text-xs text-text-muted uppercase">
+                                                <th className="px-4 py-3">Item</th>
+                                                <th className="px-4 py-3">Purchase Date</th>
+                                                <th className="px-4 py-3 text-right">Cost</th>
+                                                <th className="px-4 py-3">Life</th>
+                                                <th className="px-4 py-3">Method</th>
+                                                <th className="px-4 py-3 text-right">This Year</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {reportData.assets.map((a, idx) => {
+                                                const annualDep = a.depreciationMethod === 'diminishing'
+                                                    ? (parseFloat(a.cost) * (2 / a.effectiveLifeYears))
+                                                    : (parseFloat(a.cost) / a.effectiveLifeYears);
+                                                return (
+                                                    <tr key={idx} className="border-t border-border hover:bg-background-elevated">
+                                                        <td className="px-4 py-3">{a.itemName}</td>
+                                                        <td className="px-4 py-3">{new Date(a.purchaseDate).toLocaleDateString('en-AU')}</td>
+                                                        <td className="px-4 py-3 text-right">${parseFloat(a.cost).toLocaleString()}</td>
+                                                        <td className="px-4 py-3">{a.effectiveLifeYears}y</td>
+                                                        <td className="px-4 py-3 text-xs">{a.depreciationMethod === 'diminishing' ? 'Diminishing' : 'Prime Cost'}</td>
+                                                        <td className="px-4 py-3 text-right font-medium text-warning">${annualDep.toFixed(2)}</td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </Card>
+            </div>
+
+            <div className="flex items-start gap-2 text-xs text-text-muted mt-6">
+                <Info className="w-4 h-4 flex-shrink-0" />
+                <p>This report is for informational purposes only. Consult a registered tax agent for professional advice.</p>
             </div>
         </DashboardLayout>
     );

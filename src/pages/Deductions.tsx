@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Home, Briefcase, Calculator, FileText, Plus, DollarSign, Sparkles } from 'lucide-react';
+
 import { useTaxFlowStore } from '../stores/taxFlowStore';
 import { DashboardLayout } from '../components/layout';
 import { Card, CardHeader, Button, StatCard } from '../components/ui';
@@ -8,7 +8,10 @@ import { DepreciationHelper } from '../components/helpers/DepreciationHelper';
 import { db } from '../database/db';
 import { DeductionModal } from '../components/modals/DeductionModal';
 import { AssetModal } from '../components/modals/AssetModal';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
+import { Plus, DollarSign, Sparkles, Trash2, Home, Calculator, Briefcase, FileText } from 'lucide-react';
 import type { WfhCalculationResult } from '../utils/wfhCalculator';
+import type { DepreciableAsset } from '../types';
 import Decimal from 'decimal.js';
 
 type DeductionTab = 'wfh' | 'assets' | 'expenses' | 'summary';
@@ -29,6 +32,12 @@ export function Deductions() {
     const [showDepreciationHelper, setShowDepreciationHelper] = useState(false);
     const [showDeductionModal, setShowDeductionModal] = useState(false);
     const [showAssetModal, setShowAssetModal] = useState(false);
+
+    // Asset state
+    const [assets, setAssets] = useState<DepreciableAsset[]>([]);
+    const [deleteAssetConfirm, setDeleteAssetConfirm] = useState<{ isOpen: boolean; id: number | null; name: string }>({
+        isOpen: false, id: null, name: ''
+    });
 
     useEffect(() => {
         if (!isInitialized) {
@@ -59,8 +68,34 @@ export function Deductions() {
 
         if (currentFinancialYear) {
             loadExistingWfh();
+            loadAssets();
         }
     }, [currentFinancialYear]);
+
+    const loadAssets = async () => {
+        const assetList = await db.depreciableAssets
+            .where('financialYear')
+            .equals(currentFinancialYear)
+            .toArray();
+        setAssets(assetList);
+    };
+
+    const handleDeleteAsset = (asset: DepreciableAsset) => {
+        setDeleteAssetConfirm({
+            isOpen: true,
+            id: asset.id || null,
+            name: asset.itemName
+        });
+    };
+
+    const confirmDeleteAsset = async () => {
+        if (deleteAssetConfirm.id) {
+            await db.depreciableAssets.delete(deleteAssetConfirm.id);
+            await loadAssets();
+            await refreshDashboard();
+        }
+        setDeleteAssetConfirm({ isOpen: false, id: null, name: '' });
+    };
 
     const handleSaveWfh = async (result: WfhCalculationResult) => {
         setSavedWfhResult(result);
@@ -138,8 +173,8 @@ export function Deductions() {
                 />
                 <StatCard
                     title="Asset Depreciation"
-                    value="$0"
-                    subtitle="No assets tracked yet"
+                    value={`$${assets.reduce((sum, a) => sum + (parseFloat(a.cost) * (a.workUsePercentage / 100)), 0).toLocaleString('en-AU', { maximumFractionDigits: 0 })}`}
+                    subtitle={`${assets.length} assets tracked`}
                     icon={<Calculator className="w-5 h-5 text-info" />}
                     iconBgColor="bg-info/20"
                 />
@@ -182,14 +217,57 @@ export function Deductions() {
                                     {showDepreciationHelper ? 'Hide AI Helper' : 'AI Depreciation Helper'}
                                 </Button>
                             </div>
-                            <div className="text-center py-12">
-                                <Calculator className="w-12 h-12 text-text-muted mx-auto mb-4" />
-                                <p className="text-text-secondary mb-4">No assets tracked yet</p>
-                                <Button variant="secondary" onClick={() => setShowAssetModal(true)}>
-                                    <Plus className="w-4 h-4" />
-                                    Add Asset
-                                </Button>
-                            </div>
+
+                            {assets.length === 0 ? (
+                                <div className="text-center py-12">
+                                    <Calculator className="w-12 h-12 text-text-muted mx-auto mb-4" />
+                                    <p className="text-text-secondary mb-4">No assets tracked yet</p>
+                                    <Button variant="secondary" onClick={() => setShowAssetModal(true)}>
+                                        <Plus className="w-4 h-4" />
+                                        Add Asset
+                                    </Button>
+                                </div>
+                            ) : (
+                                <div className="border border-border rounded-lg overflow-hidden">
+                                    <div className="flex justify-end p-4 bg-background-secondary border-b border-border">
+                                        <Button onClick={() => setShowAssetModal(true)}>
+                                            <Plus className="w-4 h-4" />
+                                            Add Asset
+                                        </Button>
+                                    </div>
+                                    <table className="w-full">
+                                        <thead className="bg-background-secondary">
+                                            <tr className="text-left text-xs text-text-muted uppercase tracking-wider">
+                                                <th className="px-4 py-3">Asset</th>
+                                                <th className="px-4 py-3">Date</th>
+                                                <th className="px-4 py-3 text-right">Cost</th>
+                                                <th className="px-4 py-3 text-right">Work Use</th>
+                                                <th className="px-4 py-3">Method</th>
+                                                <th className="px-4 py-3"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {assets.map(asset => (
+                                                <tr key={asset.id} className="border-t border-border hover:bg-background-elevated">
+                                                    <td className="px-4 py-3 font-medium text-text-primary">{asset.itemName}</td>
+                                                    <td className="px-4 py-3 text-text-secondary">{new Date(asset.purchaseDate).toLocaleDateString()}</td>
+                                                    <td className="px-4 py-3 text-right text-text-primary">${parseFloat(asset.cost).toLocaleString()}</td>
+                                                    <td className="px-4 py-3 text-right text-text-secondary">{asset.workUsePercentage}%</td>
+                                                    <td className="px-4 py-3 text-text-secondary capitalize">{asset.method.replace('_', ' ')}</td>
+                                                    <td className="px-4 py-3 text-right">
+                                                        <button
+                                                            onClick={() => handleDeleteAsset(asset)}
+                                                            className="p-1 rounded hover:bg-danger/20 text-text-muted hover:text-danger transition-colors"
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
                         </Card>
                         {showDepreciationHelper && (
                             <div className="mt-6">
@@ -259,6 +337,14 @@ export function Deductions() {
                 isOpen={showAssetModal}
                 onClose={() => setShowAssetModal(false)}
                 onSave={() => refreshDashboard()}
+            />
+            <ConfirmDialog
+                isOpen={deleteAssetConfirm.isOpen}
+                title="Delete Asset"
+                message={`Are you sure you want to delete "${deleteAssetConfirm.name}"? This will affect your depreciation schedule.`}
+                confirmText="Delete Asset"
+                onConfirm={confirmDeleteAsset}
+                onCancel={() => setDeleteAssetConfirm({ isOpen: false, id: null, name: '' })}
             />
         </DashboardLayout >
     );

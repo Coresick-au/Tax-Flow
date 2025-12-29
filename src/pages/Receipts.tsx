@@ -4,6 +4,7 @@ import { Card, CardHeader } from '../components/ui/Card';
 import { Input } from '../components/ui/Input';
 import { Button } from '../components/ui/Button';
 import { StatCard } from '../components/ui/StatCard';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import {
     Plus, Receipt as ReceiptIcon, Upload, X, AlertTriangle,
     Search, Filter, Trash2, FileText, Edit2
@@ -36,6 +37,9 @@ export function Receipts() {
     const [filterCategory, setFilterCategory] = useState<ExpenseCategory | 'all'>('all');
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [editingId, setEditingId] = useState<number | null>(null);
+    const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; id: number | null; vendor: string }>({
+        isOpen: false, id: null, vendor: ''
+    });
 
     const [formData, setFormData] = useState({
         date: '',
@@ -133,11 +137,23 @@ export function Receipts() {
         setShowAddModal(true);
     };
 
-    // Delete receipt
-    const handleDelete = async (id: number) => {
-        await db.receipts.delete(id);
-        setReceipts(prev => prev.filter(r => r.id !== id));
-        await refreshDashboard();
+    // Show delete confirmation
+    const handleDelete = (receipt: Receipt) => {
+        setDeleteConfirm({
+            isOpen: true,
+            id: receipt.id || null,
+            vendor: receipt.vendor
+        });
+    };
+
+    // Actually delete after confirmation
+    const confirmDelete = async () => {
+        if (deleteConfirm.id) {
+            await db.receipts.delete(deleteConfirm.id);
+            setReceipts(prev => prev.filter(r => r.id !== deleteConfirm.id));
+            await refreshDashboard();
+        }
+        setDeleteConfirm({ isOpen: false, id: null, vendor: '' });
     };
 
     // Handle file selection
@@ -302,7 +318,7 @@ export function Receipts() {
                                                     <Edit2 className="w-4 h-4" />
                                                 </button>
                                                 <button
-                                                    onClick={() => receipt.id && handleDelete(receipt.id)}
+                                                    onClick={() => handleDelete(receipt)}
                                                     className="p-1 rounded hover:bg-danger/20 text-text-muted hover:text-danger transition-colors"
                                                 >
                                                     <Trash2 className="w-4 h-4" />
@@ -442,6 +458,16 @@ export function Receipts() {
                     </div>
                 </div>
             )}
+
+            {/* Delete Confirmation Dialog */}
+            <ConfirmDialog
+                isOpen={deleteConfirm.isOpen}
+                title="Delete Receipt"
+                message={`Are you sure you want to delete the receipt from "${deleteConfirm.vendor}"? This action cannot be undone.`}
+                confirmText="Delete"
+                onConfirm={confirmDelete}
+                onCancel={() => setDeleteConfirm({ isOpen: false, id: null, vendor: '' })}
+            />
         </DashboardLayout>
     );
 }

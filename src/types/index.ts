@@ -23,11 +23,13 @@ export interface UserProfile {
 
 export interface IncomeRecord {
     id?: number;
-    profileId: string; // Links to UserProfile.profileId
+    profileId?: string; // Links to UserProfile.profileId
     financialYear: FinancialYear;
     date: Date;
     category: IncomeCategory;
-    amount: string;
+    amount: string; // Total gross amount (grossAmount + bonuses for salary)
+    grossAmount?: string; // Base salary/wages (for salary category)
+    bonuses?: string; // Bonuses and commissions (for salary category)
     description: string;
     payer?: string; // e.g. Employer name, Bank name
     taxWithheld?: string; // PAYG withheld
@@ -59,6 +61,7 @@ export interface Property {
     firstRentedDate?: Date;
     costBase: CostBaseItem[];
     status: 'active' | 'sold' | 'inactive';
+    imageUrl?: string; // Base64 encoded property image
     createdAt: Date;
     updatedAt: Date;
 }
@@ -156,7 +159,7 @@ export interface DepreciableAsset {
 export interface CryptoTransaction {
     id?: number;
     financialYear: FinancialYear;
-    type: 'buy' | 'sell';
+    type: 'buy' | 'sell' | 'initial_balance';
     assetName: string;
     date: Date;
     price: string; // Total cost/proceeds

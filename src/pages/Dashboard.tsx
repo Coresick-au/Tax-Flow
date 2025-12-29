@@ -6,7 +6,6 @@ import {
     FileText,
     Camera,
     Pencil,
-    Link2,
     CheckCircle,
 } from 'lucide-react';
 import { useTaxFlowStore } from '../stores/taxFlowStore';
@@ -98,7 +97,7 @@ export function Dashboard() {
         estimatedTaxableIncome,
         estimatedTaxPayable,
         totalDeductions,
-        deductionCount,
+
         userProfile,
         auditRiskLevel,
         recentActivity,
@@ -112,10 +111,6 @@ export function Dashboard() {
 
     const handleManualDeduction = () => {
         setIsDeductionModalOpen(true);
-    };
-
-    const handleConnectBank = () => {
-        alert('Bank connection feature coming soon! This will allow you to automatically sync transactions from your bank account.');
     };
 
     const handleViewAllActivity = () => {
@@ -340,18 +335,6 @@ export function Dashboard() {
                             <div className="text-left">
                                 <p className="font-medium text-text-primary">Manual Deduction</p>
                                 <p className="text-xs text-text-muted">Log work expense</p>
-                            </div>
-                        </button>
-                        <button
-                            onClick={handleConnectBank}
-                            className="w-full flex items-center gap-4 p-3 rounded-lg bg-background-elevated hover:bg-background border border-border-muted transition-colors"
-                        >
-                            <div className="p-2 rounded-lg bg-info/20">
-                                <Link2 className="w-5 h-5 text-info" />
-                            </div>
-                            <div className="text-left">
-                                <p className="font-medium text-text-primary">Connect Bank</p>
-                                <p className="text-xs text-text-muted">Sync new transactions</p>
                             </div>
                         </button>
                     </div>
