@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Card, CardHeader } from '../ui/Card';
+import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Sparkles, Copy, Check, Calculator, Calendar, AlertCircle } from 'lucide-react';

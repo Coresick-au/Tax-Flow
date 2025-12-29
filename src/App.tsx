@@ -6,6 +6,7 @@ import { Crypto } from './pages/Crypto';
 import { Receipts } from './pages/Receipts';
 import { Settings } from './pages/Settings';
 import { ATOSettings } from './pages/ATOSettings';
+import { AccountantNotes } from './pages/AccountantNotes';
 import { Reports } from './pages/Reports';
 import { Income } from './pages/Income';
 
@@ -20,6 +21,7 @@ function App() {
         <Route path="/crypto" element={<Crypto />} />
         <Route path="/receipts" element={<Receipts />} />
         <Route path="/reports" element={<Reports />} />
+        <Route path="/notes" element={<AccountantNotes />} />
         <Route path="/ato-settings" element={<ATOSettings />} />
         <Route path="/settings" element={<Settings />} />
       </Routes>
@@ -28,3 +30,4 @@ function App() {
 }
 
 export default App;
+

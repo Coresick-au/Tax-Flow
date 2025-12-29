@@ -12,6 +12,7 @@ import type {
     TaxSettings,
     AppSettings,
     IncomeRecord,
+    AccountantNote,
 } from '../types';
 
 export class TaxFlowDatabase extends Dexie {
@@ -27,6 +28,7 @@ export class TaxFlowDatabase extends Dexie {
     taxSettings!: Table<TaxSettings>;
     settings!: Table<AppSettings>;
     income!: Table<IncomeRecord>;
+    accountantNotes!: Table<AccountantNote>;
 
     constructor() {
         super('TaxFlowDB');
@@ -58,6 +60,11 @@ export class TaxFlowDatabase extends Dexie {
         // Version 4: Add property loans table
         this.version(4).stores({
             propertyLoans: '++id, propertyId, financialYear, lender'
+        });
+
+        // Version 5: Add accountant notes table
+        this.version(5).stores({
+            accountantNotes: '++id, profileId, financialYear, priority, isResolved'
         });
     }
 }

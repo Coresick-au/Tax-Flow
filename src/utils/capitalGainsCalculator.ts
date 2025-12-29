@@ -1,5 +1,5 @@
 import Decimal from 'decimal.js';
-import type { CryptoTransaction, CapitalGainCalculation } from '../types';
+import type { CryptoTransaction } from '../types';
 
 /**
  * Capital Gains Calculator

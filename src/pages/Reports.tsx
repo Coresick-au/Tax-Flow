@@ -287,11 +287,11 @@ export function Reports() {
                     </div>
                     <div class="summary-row">
                         <span class="label">Total WFH Hours</span>
-                        <span class="value">${workDeductions.wfhHours || 0} hours</span>
+                        <span class="value">${workDeductions.totalHoursWorked || 0} hours</span>
                     </div>
                     <div class="summary-row">
                         <span class="label">Calculated Deduction</span>
-                        <span class="value">$${(parseFloat(String(workDeductions.wfhHours || 0)) * 0.67).toFixed(2)}</span>
+                        <span class="value">$${(parseFloat(String(workDeductions.totalHoursWorked || 0)) * 0.67).toFixed(2)}</span>
                     </div>
                     ` : '<p class="empty">No WFH deductions entered.</p>'}
                 </div>
@@ -313,7 +313,7 @@ export function Reports() {
                         </thead>
                         <tbody>
                             ${assets.map(a => {
-            const annualDepreciation = a.depreciationMethod === 'diminishing'
+            const annualDepreciation = a.method === 'diminishing_value'
                 ? (parseFloat(a.cost) * (2 / a.effectiveLifeYears))
                 : (parseFloat(a.cost) / a.effectiveLifeYears);
             return `
@@ -322,7 +322,7 @@ export function Reports() {
                                     <td>${new Date(a.purchaseDate).toLocaleDateString('en-AU')}</td>
                                     <td class="text-right">$${parseFloat(a.cost).toLocaleString()}</td>
                                     <td>${a.effectiveLifeYears} years</td>
-                                    <td>${a.depreciationMethod === 'diminishing' ? 'Diminishing Value' : 'Prime Cost'}</td>
+                                    <td>${a.method === 'diminishing_value' ? 'Diminishing Value' : 'Prime Cost'}</td>
                                     <td class="text-right">$${annualDepreciation.toFixed(2)}</td>
                                 </tr>
                             `}).join('')}
@@ -400,7 +400,7 @@ export function Reports() {
                                         ))}
                                     </Pie>
                                     <Tooltip
-                                        formatter={(value: number) => [`$${Number(value).toLocaleString()}`, 'Amount']}
+                                        formatter={(value) => [`$${Number(value ?? 0).toLocaleString()}`, 'Amount']}
                                         contentStyle={{ backgroundColor: '#1F2937', borderColor: '#374151', color: '#F9FAFB' }}
                                     />
                                     <Legend />
@@ -596,7 +596,7 @@ export function Reports() {
                                         </thead>
                                         <tbody>
                                             {reportData.assets.map((a, idx) => {
-                                                const annualDep = a.depreciationMethod === 'diminishing'
+                                                const annualDep = a.method === 'diminishing_value'
                                                     ? (parseFloat(a.cost) * (2 / a.effectiveLifeYears))
                                                     : (parseFloat(a.cost) / a.effectiveLifeYears);
                                                 return (
@@ -605,7 +605,7 @@ export function Reports() {
                                                         <td className="px-4 py-3">{new Date(a.purchaseDate).toLocaleDateString('en-AU')}</td>
                                                         <td className="px-4 py-3 text-right">${parseFloat(a.cost).toLocaleString()}</td>
                                                         <td className="px-4 py-3">{a.effectiveLifeYears}y</td>
-                                                        <td className="px-4 py-3 text-xs">{a.depreciationMethod === 'diminishing' ? 'Diminishing' : 'Prime Cost'}</td>
+                                                        <td className="px-4 py-3 text-xs">{a.method === 'diminishing_value' ? 'Diminishing' : 'Prime Cost'}</td>
                                                         <td className="px-4 py-3 text-right font-medium text-warning">${annualDep.toFixed(2)}</td>
                                                     </tr>
                                                 );

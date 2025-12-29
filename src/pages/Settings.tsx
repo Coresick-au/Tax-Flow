@@ -31,8 +31,9 @@ export function Settings() {
             const blob = new Blob([jsonData], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
 
-            const timestamp = new Date().toISOString().split('T')[0];
-            const filename = `taxflow-backup-${currentFinancialYear}-${timestamp}.json`;
+            const today = new Date();
+            const dateStr = `${today.getFullYear()}.${String(today.getMonth() + 1).padStart(2, '0')}.${String(today.getDate()).padStart(2, '0')}`;
+            const filename = `${dateStr}-TaxFlow-Backup-FY${currentFinancialYear}.json`;
 
             const a = document.createElement('a');
             a.href = url;

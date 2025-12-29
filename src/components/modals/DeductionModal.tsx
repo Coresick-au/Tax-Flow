@@ -27,7 +27,7 @@ const CATEGORY_LABELS: Record<ExpenseCategory, string> = {
 const GREY_AREA_CATEGORIES: ExpenseCategory[] = ['work_clothing', 'self_education', 'home_office', 'car_expenses'];
 
 export function DeductionModal({ isOpen, onClose, onSave }: DeductionModalProps) {
-    const { currentFinancialYear, refreshDashboard } = useTaxFlowStore();
+    const { currentFinancialYear, currentProfileId, refreshDashboard } = useTaxFlowStore();
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const [formData, setFormData] = useState({
@@ -50,6 +50,7 @@ export function DeductionModal({ isOpen, onClose, onSave }: DeductionModalProps)
 
         try {
             const receiptData: Omit<Receipt, 'id'> = {
+                profileId: currentProfileId || '',
                 financialYear: currentFinancialYear,
                 date: new Date(formData.date),
                 vendor: formData.vendor,

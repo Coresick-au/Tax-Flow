@@ -14,6 +14,7 @@ import {
     Pencil,
     DollarSign,
     Scale,
+    StickyNote,
 } from 'lucide-react';
 import { useTaxFlowStore } from '../../stores/taxFlowStore';
 import { Button } from '../ui';
@@ -32,6 +33,7 @@ const navItems = [
     { id: 'crypto', label: 'Crypto & CGT', icon: Coins, path: '/crypto' },
     { id: 'receipts', label: 'Receipts', icon: FileText, path: '/receipts' },
     { id: 'reports', label: 'Reports', icon: FileText, path: '/reports' },
+    { id: 'notes', label: 'Accountant Notes', icon: StickyNote, path: '/notes' },
     { id: 'ato-settings', label: 'ATO Settings', icon: Scale, path: '/ato-settings' },
     { id: 'settings', label: 'Settings', icon: Settings, path: '/settings' },
 ];

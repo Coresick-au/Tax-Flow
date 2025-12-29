@@ -285,3 +285,18 @@ export interface NavigationItem {
     icon: string;
     path: string;
 }
+
+// ==================== Accountant Notes ====================
+
+export interface AccountantNote {
+    id?: number;
+    profileId?: string;
+    financialYear: FinancialYear;
+    title: string;
+    content: string;
+    priority: 'low' | 'medium' | 'high';
+    isResolved: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
