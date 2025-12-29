@@ -6,6 +6,8 @@ import { Card, CardHeader, Button, StatCard } from '../components/ui';
 import { WfhCalculator } from '../components/WfhCalculator';
 import { DepreciationHelper } from '../components/helpers/DepreciationHelper';
 import { db } from '../database/db';
+import { DeductionModal } from '../components/modals/DeductionModal';
+import { AssetModal } from '../components/modals/AssetModal';
 import type { WfhCalculationResult } from '../utils/wfhCalculator';
 import Decimal from 'decimal.js';
 
@@ -25,6 +27,8 @@ export function Deductions() {
     const [activeTab, setActiveTab] = useState<DeductionTab>('wfh');
     const [savedWfhResult, setSavedWfhResult] = useState<WfhCalculationResult | null>(null);
     const [showDepreciationHelper, setShowDepreciationHelper] = useState(false);
+    const [showDeductionModal, setShowDeductionModal] = useState(false);
+    const [showAssetModal, setShowAssetModal] = useState(false);
 
     useEffect(() => {
         if (!isInitialized) {
@@ -110,7 +114,7 @@ export function Deductions() {
                     <h1 className="text-2xl font-bold text-text-primary">Deductions</h1>
                     <p className="text-text-secondary">Manage your tax deductions for FY {currentFinancialYear}</p>
                 </div>
-                <Button>
+                <Button onClick={() => setShowDeductionModal(true)}>
                     <Plus className="w-4 h-4" />
                     Add Deduction
                 </Button>
@@ -181,7 +185,7 @@ export function Deductions() {
                             <div className="text-center py-12">
                                 <Calculator className="w-12 h-12 text-text-muted mx-auto mb-4" />
                                 <p className="text-text-secondary mb-4">No assets tracked yet</p>
-                                <Button variant="secondary">
+                                <Button variant="secondary" onClick={() => setShowAssetModal(true)}>
                                     <Plus className="w-4 h-4" />
                                     Add Asset
                                 </Button>
@@ -204,7 +208,7 @@ export function Deductions() {
                         <div className="text-center py-12">
                             <Briefcase className="w-12 h-12 text-text-muted mx-auto mb-4" />
                             <p className="text-text-secondary mb-4">No work expenses recorded</p>
-                            <Button variant="secondary">
+                            <Button variant="secondary" onClick={() => setShowDeductionModal(true)}>
                                 <Plus className="w-4 h-4" />
                                 Add Expense
                             </Button>
@@ -243,6 +247,19 @@ export function Deductions() {
                     </Card>
                 )}
             </div>
-        </DashboardLayout>
+
+
+            <DeductionModal
+                isOpen={showDeductionModal}
+                onClose={() => setShowDeductionModal(false)}
+                onSave={() => refreshDashboard()}
+            />
+
+            <AssetModal
+                isOpen={showAssetModal}
+                onClose={() => setShowAssetModal(false)}
+                onSave={() => refreshDashboard()}
+            />
+        </DashboardLayout >
     );
 }

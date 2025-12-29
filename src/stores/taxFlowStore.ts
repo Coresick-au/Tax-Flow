@@ -3,6 +3,7 @@ import Decimal from 'decimal.js';
 import { db } from '../database/db';
 import { seedTaxSettings, getOrCreateTaxSettings } from '../database/seed';
 import { calculateSafetyCheck, mapReceiptCategoryToAtoCategory } from '../utils/safetyCheck';
+import { calculateWorkDeduction, calculateDepreciation, calculateCapitalGains } from '../utils/taxCalculators';
 import type { UserProfile, TaxSettings, SafetyCheckItem, ActivityItem } from '../types';
 
 interface TaxFlowState {
@@ -206,6 +207,16 @@ export const useTaxFlowStore = create<TaxFlowState>((set, get) => ({
                 totalIncome = totalIncome.add(item.amount || '0');
             }
 
+            // Add Crypto Gains to Income
+            const cryptoTx = await db.cryptoTransactions
+                .where('financialYear')
+                .equals(currentFinancialYear)
+                .toArray();
+
+            const cryptoGain = calculateCapitalGains(cryptoTx);
+            totalIncome = totalIncome.add(cryptoGain);
+
+
             // Sum all deductions
             const propertyExpenses = await db.propertyExpenses
                 .where('financialYear')
@@ -218,6 +229,18 @@ export const useTaxFlowStore = create<TaxFlowState>((set, get) => ({
                 .equals(currentFinancialYear)
                 .toArray();
 
+            // Fetch WFH deductions
+            const wfhRecord = await db.workDeductions
+                .where('financialYear')
+                .equals(currentFinancialYear)
+                .first();
+
+            // Fetch Depreciable Assets
+            const assets = await db.depreciableAssets
+                .where('financialYear')
+                .equals(currentFinancialYear)
+                .toArray();
+
             let totalDeductions = new Decimal(0);
             for (const expense of propertyExpenses) {
                 totalDeductions = totalDeductions.add(expense.amount || '0');
@@ -226,7 +249,21 @@ export const useTaxFlowStore = create<TaxFlowState>((set, get) => ({
                 totalDeductions = totalDeductions.add(receipt.amount || '0');
             }
 
-            const deductionCount = propertyExpenses.length + receipts.length;
+            // Add WFH deduction
+            if (wfhRecord) {
+                totalDeductions = totalDeductions.add(calculateWorkDeduction(wfhRecord));
+            }
+
+            // Add Depreciation
+            // Determine FY end date
+            const endYear = parseInt(currentFinancialYear.split('-')[1]);
+            const fyEnd = new Date(endYear, 5, 30); // June 30
+
+            for (const asset of assets) {
+                totalDeductions = totalDeductions.add(calculateDepreciation(asset, fyEnd));
+            }
+
+            const deductionCount = propertyExpenses.length + receipts.length + (wfhRecord ? 1 : 0) + assets.length;
 
             // Calculate taxable income
             const taxableIncome = Decimal.max(totalIncome.sub(totalDeductions), new Decimal(0));

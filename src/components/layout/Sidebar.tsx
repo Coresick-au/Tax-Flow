@@ -1,4 +1,5 @@
-import { NavLink } from 'react-router-dom';
+import { useState, useRef, useEffect } from 'react';
+import { NavLink, useNavigate } from 'react-router-dom';
 import {
     LayoutDashboard,
     Wallet,
@@ -9,6 +10,9 @@ import {
     ChevronDown,
     Building2,
     Coins,
+    Camera,
+    Pencil,
+    DollarSign,
 } from 'lucide-react';
 import { useTaxFlowStore } from '../../stores/taxFlowStore';
 import { Button } from '../ui';
@@ -30,12 +34,60 @@ const navItems = [
 ];
 
 export function Sidebar({ isCollapsed = false }: SidebarProps) {
+    const navigate = useNavigate();
+    const [isNewEntryOpen, setIsNewEntryOpen] = useState(false);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
     const {
         currentFinancialYear,
         availableFinancialYears,
         setFinancialYear,
         userProfile
     } = useTaxFlowStore();
+
+    // Close dropdown when clicking outside
+    useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+                setIsNewEntryOpen(false);
+            }
+        }
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    const newEntryOptions = [
+        {
+            id: 'receipt',
+            label: 'New Receipt',
+            icon: Camera,
+            description: 'Upload receipt photo',
+            action: () => {
+                setIsNewEntryOpen(false);
+                navigate('/receipts');
+            }
+        },
+        {
+            id: 'deduction',
+            label: 'New Deduction',
+            icon: Pencil,
+            description: 'Log work expense',
+            action: () => {
+                setIsNewEntryOpen(false);
+                navigate('/deductions');
+            }
+        },
+        {
+            id: 'income',
+            label: 'New Income',
+            icon: DollarSign,
+            description: 'Record income entry',
+            action: () => {
+                setIsNewEntryOpen(false);
+                navigate('/income');
+            }
+        },
+    ];
 
     return (
         <aside
@@ -92,15 +144,37 @@ export function Sidebar({ isCollapsed = false }: SidebarProps) {
                 </ul>
             </nav>
 
-            {/* New Entry Button */}
-            <div className="p-4">
+            {/* New Entry Button with Dropdown */}
+            <div className="p-4 relative" ref={dropdownRef}>
                 <Button
                     variant="primary"
                     className={`w-full ${isCollapsed ? 'px-0 justify-center' : ''}`}
+                    onClick={() => setIsNewEntryOpen(!isNewEntryOpen)}
                 >
                     <Plus className="w-5 h-5" />
                     {!isCollapsed && <span>New Entry</span>}
                 </Button>
+
+                {/* Dropdown Menu */}
+                {isNewEntryOpen && !isCollapsed && (
+                    <div className="absolute bottom-full left-4 right-4 mb-2 bg-background-secondary border border-border-muted rounded-lg shadow-xl overflow-hidden z-50">
+                        {newEntryOptions.map((option) => (
+                            <button
+                                key={option.id}
+                                onClick={option.action}
+                                className="w-full flex items-center gap-3 p-3 hover:bg-background-elevated transition-colors text-left"
+                            >
+                                <div className="p-2 rounded-lg bg-accent/20">
+                                    <option.icon className="w-4 h-4 text-accent" />
+                                </div>
+                                <div>
+                                    <p className="text-sm font-medium text-text-primary">{option.label}</p>
+                                    <p className="text-xs text-text-muted">{option.description}</p>
+                                </div>
+                            </button>
+                        ))}
+                    </div>
+                )}
             </div>
 
             {/* User Profile */}

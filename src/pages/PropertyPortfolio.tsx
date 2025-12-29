@@ -23,6 +23,7 @@ export function PropertyPortfolio() {
     const [searchQuery, setSearchQuery] = useState('');
     const [properties, setProperties] = useState<Property[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [showArchived, setShowArchived] = useState(false);
 
     // Income state
     const [propertyIncome, setPropertyIncome] = useState<PropertyIncome | null>(null);
@@ -34,6 +35,15 @@ export function PropertyPortfolio() {
 
     // Expenses state
     const [propertyExpenses, setPropertyExpenses] = useState<PropertyExpense[]>([]);
+
+    // Add Expense state
+    const [showAddExpense, setShowAddExpense] = useState(false);
+    const [expenseForm, setExpenseForm] = useState({
+        date: '',
+        category: 'management_fees',
+        description: '',
+        amount: '',
+    });
 
     // Add Property state
     const [showAddProperty, setShowAddProperty] = useState(false);
@@ -103,44 +113,44 @@ export function PropertyPortfolio() {
     }, [currentFinancialYear, selectedProperty]);
 
     // Load income and expenses when property is selected
-    useEffect(() => {
-        const loadPropertyData = async () => {
-            if (!selectedProperty?.id) return;
+    const loadPropertyData = async () => {
+        if (!selectedProperty?.id) return;
 
-            try {
-                // Load income
-                const income = await db.propertyIncome
-                    .where({ propertyId: selectedProperty.id, financialYear: currentFinancialYear })
-                    .first();
+        try {
+            // Load income
+            const income = await db.propertyIncome
+                .where({ propertyId: selectedProperty.id, financialYear: currentFinancialYear })
+                .first();
 
-                if (income) {
-                    setPropertyIncome(income);
-                    setIncomeForm({
-                        grossRent: income.grossRent || '',
-                        insurancePayouts: income.insurancePayouts || '',
-                        otherIncome: income.otherIncome || '',
-                    });
-                } else {
-                    setPropertyIncome(null);
-                    setIncomeForm({ grossRent: '', insurancePayouts: '', otherIncome: '' });
-                }
-
-                // Load expenses (non-maintenance)
-                const allExpenses = await db.propertyExpenses
-                    .where({ propertyId: selectedProperty.id, financialYear: currentFinancialYear })
-                    .toArray();
-
-                // Split into maintenance (repairs/improvements) and regular expenses
-                const maintenance = allExpenses.filter(e => e.category === 'repairs' || e.category === 'capital_improvement');
-                const regularExpenses = allExpenses.filter(e => e.category !== 'repairs' && e.category !== 'capital_improvement');
-
-                setPropertyExpenses(regularExpenses);
-                setMaintenanceRecords(maintenance);
-            } catch (error) {
-                console.error('Failed to load property data:', error);
+            if (income) {
+                setPropertyIncome(income);
+                setIncomeForm({
+                    grossRent: income.grossRent || '',
+                    insurancePayouts: income.insurancePayouts || '',
+                    otherIncome: income.otherIncome || '',
+                });
+            } else {
+                setPropertyIncome(null);
+                setIncomeForm({ grossRent: '', insurancePayouts: '', otherIncome: '' });
             }
-        };
 
+            // Load expenses (non-maintenance)
+            const allExpenses = await db.propertyExpenses
+                .where({ propertyId: selectedProperty.id, financialYear: currentFinancialYear })
+                .toArray();
+
+            // Split into maintenance (repairs/improvements) and regular expenses
+            const maintenance = allExpenses.filter(e => e.category === 'repairs' || e.category === 'capital_improvement');
+            const regularExpenses = allExpenses.filter(e => e.category !== 'repairs' && e.category !== 'capital_improvement');
+
+            setPropertyExpenses(regularExpenses);
+            setMaintenanceRecords(maintenance);
+        } catch (error) {
+            console.error('Failed to load property data:', error);
+        }
+    };
+
+    useEffect(() => {
         loadPropertyData();
     }, [selectedProperty, currentFinancialYear]);
 
@@ -161,7 +171,7 @@ export function PropertyPortfolio() {
     // State for editing property
     const [isEditing, setIsEditing] = useState(false);
 
-    // ... existing code ...
+
 
     // Handle Edit Property Click
     const handleEditProperty = () => {
@@ -235,7 +245,23 @@ export function PropertyPortfolio() {
         });
     };
 
-    // ... existing code ...
+
+
+    const handleArchiveProperty = async () => {
+        if (!selectedProperty?.id) return;
+        const newStatus = selectedProperty.status === 'active' ? 'inactive' : 'active';
+        await db.properties.update(selectedProperty.id, {
+            status: newStatus,
+            updatedAt: new Date()
+        });
+
+        // Update state logic
+        const updated = await db.properties.get(selectedProperty.id);
+        if (updated) {
+            setProperties(prev => prev.map(p => p.id === updated.id ? updated : p));
+            setSelectedProperty(updated);
+        }
+    };
 
     // Save income to database
     const handleSaveIncome = async () => {
@@ -312,6 +338,40 @@ export function PropertyPortfolio() {
         });
     };
 
+    // Add Recurrent Expense
+    const handleAddExpense = async () => {
+        if (!selectedProperty?.id || !expenseForm.amount || !expenseForm.date) return;
+
+        try {
+            await db.propertyExpenses.add({
+                propertyId: selectedProperty.id,
+                financialYear: currentFinancialYear,
+                date: new Date(expenseForm.date),
+                category: expenseForm.category as any,
+                description: expenseForm.description,
+                amount: expenseForm.amount,
+                isCapitalImprovement: false,
+                createdAt: new Date(),
+            });
+
+            // Reset form
+            setExpenseForm({
+                date: '',
+                category: 'management_fees',
+                description: '',
+                amount: '',
+            });
+            setShowAddExpense(false);
+
+            // Reload
+            loadPropertyData();
+            // Also refresh overall dashboard stats
+            refreshDashboard();
+        } catch (error) {
+            console.error('Failed to add expense:', error);
+        }
+    };
+
     // Calculate total maintenance
     const totalMaintenance = maintenanceRecords.reduce((sum, exp) => sum + parseFloat(exp.amount || '0'), 0);
 
@@ -371,9 +431,20 @@ export function PropertyPortfolio() {
                 <div className="w-72 flex-shrink-0 flex flex-col">
                     <div className="flex items-center justify-between mb-4">
                         <h2 className="font-semibold text-text-primary">Your Properties</h2>
-                        <Button size="sm" className="p-2" onClick={() => setShowAddProperty(!showAddProperty)}>
-                            <Plus className="w-4 h-4" />
-                        </Button>
+                        <div className="flex gap-1">
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                className="p-2 text-xs"
+                                onClick={() => setShowArchived(!showArchived)}
+                                title={showArchived ? "Hide Archived" : "Show Archived"}
+                            >
+                                <Building2 className={`w-4 h-4 ${showArchived ? 'text-accent' : 'text-text-muted'}`} />
+                            </Button>
+                            <Button size="sm" className="p-2" onClick={() => setShowAddProperty(!showAddProperty)}>
+                                <Plus className="w-4 h-4" />
+                            </Button>
+                        </div>
                     </div>
 
                     {/* Add/Edit Property Form */}
@@ -444,34 +515,36 @@ export function PropertyPortfolio() {
 
                     {/* Property Cards */}
                     <div className="flex-1 overflow-y-auto space-y-2">
-                        {properties.map((property) => {
-                            const yieldPercent = 4.2; // Mock yield
-                            return (
-                                <button
-                                    key={property.id}
-                                    onClick={() => setSelectedProperty(property)}
-                                    className={`w-full p-3 rounded-lg text-left transition-colors ${selectedProperty?.id === property.id
-                                        ? 'bg-accent/20 border border-accent'
-                                        : 'bg-background-card border border-border-muted hover:border-primary'
-                                        }`}
-                                >
-                                    <div className="flex gap-3">
-                                        <div className="w-12 h-12 rounded-lg bg-background-elevated flex items-center justify-center">
-                                            <Building2 className="w-6 h-6 text-text-muted" />
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <p className="font-medium text-text-primary truncate">{property.address}</p>
-                                            <p className="text-xs text-text-muted truncate">
-                                                {property.suburb} {property.state} {property.postcode}
-                                            </p>
-                                            <div className={`text-xs font-medium mt-1 ${getYieldColor(yieldPercent)}`}>
-                                                {yieldPercent.toFixed(1)}% Yield
+                        {properties
+                            .filter(p => showArchived ? true : p.status !== 'inactive')
+                            .map((property) => {
+                                const yieldPercent = 4.2; // Mock yield
+                                return (
+                                    <button
+                                        key={property.id}
+                                        onClick={() => setSelectedProperty(property)}
+                                        className={`w-full p-3 rounded-lg text-left transition-colors ${selectedProperty?.id === property.id
+                                            ? 'bg-accent/20 border border-accent'
+                                            : 'bg-background-card border border-border-muted hover:border-primary'
+                                            }`}
+                                    >
+                                        <div className="flex gap-3">
+                                            <div className="w-12 h-12 rounded-lg bg-background-elevated flex items-center justify-center">
+                                                <Building2 className="w-6 h-6 text-text-muted" />
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="font-medium text-text-primary truncate">{property.address}</p>
+                                                <p className="text-xs text-text-muted truncate">
+                                                    {property.suburb} {property.state} {property.postcode}
+                                                </p>
+                                                <div className={`text-xs font-medium mt-1 ${getYieldColor(yieldPercent)}`}>
+                                                    {yieldPercent.toFixed(1)}% Yield
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
-                                </button>
-                            );
-                        })}
+                                    </button>
+                                );
+                            })}
                     </div>
                 </div>
 
@@ -499,11 +572,12 @@ export function PropertyPortfolio() {
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <span className="px-3 py-1 rounded-full bg-success/20 text-success text-xs font-medium">
-                                        ACTIVE
+                                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${selectedProperty.status === 'active' ? 'bg-success/20 text-success' : 'bg-text-muted/20 text-text-muted'
+                                        }`}>
+                                        {selectedProperty.status.toUpperCase()}
                                     </span>
-                                    <Button variant="secondary" size="sm">
-                                        Property Settings
+                                    <Button variant="secondary" size="sm" onClick={handleArchiveProperty}>
+                                        {selectedProperty.status === 'active' ? 'Archive' : 'Activate'}
                                     </Button>
                                     <Button size="sm" onClick={handleEditProperty}>
                                         Edit Details
@@ -753,13 +827,63 @@ export function PropertyPortfolio() {
                                             <div className="text-center py-12">
                                                 <DollarSign className="w-12 h-12 text-text-muted mx-auto mb-4" />
                                                 <p className="text-text-secondary mb-4">No expenses recorded yet</p>
-                                                <Button variant="secondary">
+                                                <Button variant="secondary" onClick={() => setShowAddExpense(true)}>
                                                     <Plus className="w-4 h-4" />
                                                     Add Expense
                                                 </Button>
                                             </div>
                                         ) : (
                                             <>
+                                                {/* Add Expense Form */}
+                                                {showAddExpense && (
+                                                    <div className="mb-6 p-4 bg-background-elevated rounded-lg border border-border">
+                                                        <h4 className="font-medium text-sm mb-3">New Expense</h4>
+                                                        <div className="grid grid-cols-2 gap-4 mb-4">
+                                                            <Input
+                                                                label="DATE"
+                                                                type="date"
+                                                                value={expenseForm.date}
+                                                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setExpenseForm(prev => ({ ...prev, date: e.target.value }))}
+                                                            />
+                                                            <div>
+                                                                <label className="block text-xs text-text-muted mb-1.5">CATEGORY</label>
+                                                                <select
+                                                                    className="w-full px-3 py-2 rounded-lg bg-background-elevated border border-border text-text-primary"
+                                                                    value={expenseForm.category}
+                                                                    onChange={(e) => setExpenseForm(prev => ({ ...prev, category: e.target.value }))}
+                                                                >
+                                                                    <option value="management_fees">Management Fees</option>
+                                                                    <option value="council_rates">Council Rates</option>
+                                                                    <option value="water_rates">Water Rates</option>
+                                                                    <option value="strata_fees">Strata / Body Corp</option>
+                                                                    <option value="insurance">Insurance</option>
+                                                                    <option value="interest">Loan Interest</option>
+                                                                    <option value="land_tax">Land Tax</option>
+                                                                    <option value="sundry">Sundry / Other</option>
+                                                                </select>
+                                                            </div>
+                                                            <Input
+                                                                label="DESCRIPTION"
+                                                                placeholder="Description"
+                                                                value={expenseForm.description}
+                                                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setExpenseForm(prev => ({ ...prev, description: e.target.value }))}
+                                                            />
+                                                            <Input
+                                                                label="AMOUNT"
+                                                                type="number"
+                                                                placeholder="0.00"
+                                                                leftIcon={<span className="text-text-muted">$</span>}
+                                                                value={expenseForm.amount}
+                                                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setExpenseForm(prev => ({ ...prev, amount: e.target.value }))}
+                                                            />
+                                                        </div>
+                                                        <div className="flex justify-end gap-2">
+                                                            <Button variant="secondary" size="sm" onClick={() => setShowAddExpense(false)}>Cancel</Button>
+                                                            <Button size="sm" onClick={handleAddExpense}>Save Expense</Button>
+                                                        </div>
+                                                    </div>
+                                                )}
+
                                                 <div className="border border-border rounded-lg overflow-hidden mb-4">
                                                     <table className="w-full">
                                                         <thead className="bg-background-secondary">
@@ -842,6 +966,16 @@ export function PropertyPortfolio() {
                                                     <option value="other">Other</option>
                                                 </select>
                                             </div>
+
+                                            <div className="col-span-1">
+                                                <label className="block text-xs text-text-muted mb-1.5">DATE</label>
+                                                <input
+                                                    type="date"
+                                                    value={costBaseForm.date}
+                                                    onChange={(e) => setCostBaseForm(prev => ({ ...prev, date: e.target.value }))}
+                                                    className="w-full px-3 py-2 rounded-lg bg-background-elevated border border-border text-text-primary h-[42px]"
+                                                />
+                                            </div>
                                             <Input
                                                 label="DESCRIPTION"
                                                 placeholder="Optional description"
@@ -849,7 +983,7 @@ export function PropertyPortfolio() {
                                                 onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                                                     setCostBaseForm(prev => ({ ...prev, description: e.target.value }))
                                                 }
-                                                className="col-span-2"
+                                                className="col-span-1"
                                             />
                                             <Input
                                                 label="AMOUNT"
@@ -920,7 +1054,7 @@ export function PropertyPortfolio() {
                                             <p className="text-text-secondary mb-4">
                                                 Loans section coming soon
                                             </p>
-                                            <Button variant="secondary">
+                                            <Button variant="secondary" onClick={() => alert("Loan tracking features are coming in a future update.")}>
                                                 <Plus className="w-4 h-4" />
                                                 Add Loan
                                             </Button>

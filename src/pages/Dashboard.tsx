@@ -1,4 +1,5 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
     TrendingUp,
     AlertTriangle,
@@ -21,6 +22,7 @@ import {
 import { useTaxFlowStore } from '../stores/taxFlowStore';
 import { DashboardLayout } from '../components/layout';
 import { StatCard, Card, CardHeader, Button } from '../components/ui';
+import { DeductionModal } from '../components/modals/DeductionModal';
 
 // Mock data for the financial trend chart
 const mockChartData = [
@@ -66,6 +68,9 @@ function formatCurrency(amount: number): string {
 }
 
 export function Dashboard() {
+    const navigate = useNavigate();
+    const [isDeductionModalOpen, setIsDeductionModalOpen] = useState(false);
+
     const {
         initialize,
         isInitialized,
@@ -77,7 +82,25 @@ export function Dashboard() {
         deductionCount,
         userProfile,
         auditRiskLevel,
+        refreshDashboard,
     } = useTaxFlowStore();
+
+    // Quick action handlers
+    const handleSnapReceipt = () => {
+        navigate('/receipts');
+    };
+
+    const handleManualDeduction = () => {
+        setIsDeductionModalOpen(true);
+    };
+
+    const handleConnectBank = () => {
+        alert('Bank connection feature coming soon! This will allow you to automatically sync transactions from your bank account.');
+    };
+
+    const handleViewAllActivity = () => {
+        navigate('/receipts');
+    };
 
     // Calculate risk indicator position
     const getRiskPosition = () => {
@@ -312,7 +335,10 @@ export function Dashboard() {
                 <Card>
                     <CardHeader title="Quick Actions" />
                     <div className="space-y-3">
-                        <button className="w-full flex items-center gap-4 p-3 rounded-lg bg-background-elevated hover:bg-background border border-border-muted transition-colors">
+                        <button
+                            onClick={handleSnapReceipt}
+                            className="w-full flex items-center gap-4 p-3 rounded-lg bg-background-elevated hover:bg-background border border-border-muted transition-colors"
+                        >
                             <div className="p-2 rounded-lg bg-primary/20">
                                 <Camera className="w-5 h-5 text-primary" />
                             </div>
@@ -321,7 +347,10 @@ export function Dashboard() {
                                 <p className="text-xs text-text-muted">Upload & Process via OCR</p>
                             </div>
                         </button>
-                        <button className="w-full flex items-center gap-4 p-3 rounded-lg bg-background-elevated hover:bg-background border border-border-muted transition-colors">
+                        <button
+                            onClick={handleManualDeduction}
+                            className="w-full flex items-center gap-4 p-3 rounded-lg bg-background-elevated hover:bg-background border border-border-muted transition-colors"
+                        >
                             <div className="p-2 rounded-lg bg-accent/20">
                                 <Pencil className="w-5 h-5 text-accent" />
                             </div>
@@ -330,7 +359,10 @@ export function Dashboard() {
                                 <p className="text-xs text-text-muted">Log work expense</p>
                             </div>
                         </button>
-                        <button className="w-full flex items-center gap-4 p-3 rounded-lg bg-background-elevated hover:bg-background border border-border-muted transition-colors">
+                        <button
+                            onClick={handleConnectBank}
+                            className="w-full flex items-center gap-4 p-3 rounded-lg bg-background-elevated hover:bg-background border border-border-muted transition-colors"
+                        >
                             <div className="p-2 rounded-lg bg-info/20">
                                 <Link2 className="w-5 h-5 text-info" />
                             </div>
@@ -347,7 +379,12 @@ export function Dashboard() {
                     <CardHeader
                         title="Recent Activity"
                         action={
-                            <button className="text-sm text-primary hover:underline">View All</button>
+                            <button
+                                onClick={handleViewAllActivity}
+                                className="text-sm text-primary hover:underline"
+                            >
+                                View All
+                            </button>
                         }
                     />
                     <div className="overflow-x-auto">
@@ -382,6 +419,18 @@ export function Dashboard() {
                     </div>
                 </Card>
             </div>
+
+            {/* Deduction Modal */}
+            {isDeductionModalOpen && (
+                <DeductionModal
+                    isOpen={isDeductionModalOpen}
+                    onClose={() => setIsDeductionModalOpen(false)}
+                    onSave={() => {
+                        setIsDeductionModalOpen(false);
+                        refreshDashboard();
+                    }}
+                />
+            )}
         </DashboardLayout>
     );
 }
