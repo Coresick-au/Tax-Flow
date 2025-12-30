@@ -12,6 +12,7 @@ import {
 import { useTaxFlowStore } from '../stores/taxFlowStore';
 import { db } from '../database/db';
 import type { Receipt, ExpenseCategory } from '../types';
+import Decimal from 'decimal.js';
 
 // Grey area categories that trigger warnings
 const GREY_AREA_CATEGORIES: ExpenseCategory[] = ['work_clothing', 'self_education', 'home_office', 'car_expenses'];
@@ -176,7 +177,7 @@ export function Receipts() {
     });
 
     // Calculate totals
-    const totalAmount = receipts.reduce((sum, r) => sum + parseFloat(r.amount || '0'), 0);
+    const totalAmount = receipts.reduce((sum, r) => sum.add(r.amount || 0), new Decimal(0));
     const greyAreaCount = receipts.filter(r => r.isGreyArea).length;
     const withAttachments = receipts.filter(r => r.attachmentName).length;
 
@@ -198,7 +199,7 @@ export function Receipts() {
                 </div>
 
                 {/* Stats */}
-                <div className="grid grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     <StatCard
                         title="TOTAL RECEIPTS"
                         value={receipts.length.toString()}
@@ -207,7 +208,7 @@ export function Receipts() {
                     />
                     <StatCard
                         title="TOTAL AMOUNT"
-                        value={`$${totalAmount.toLocaleString('en-AU', { minimumFractionDigits: 2 })}`}
+                        value={`$${totalAmount.toNumber().toLocaleString('en-AU', { minimumFractionDigits: 2 })}`}
                         icon={<FileText className="w-5 h-5 text-success" />}
                         iconBgColor="bg-success/20"
                     />
@@ -227,7 +228,7 @@ export function Receipts() {
                 </div>
 
                 {/* Search and Filter */}
-                <div className="flex gap-4">
+                <div className="flex flex-col sm:flex-row gap-4">
                     <div className="flex-1 relative">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
                         <input
@@ -353,7 +354,7 @@ export function Receipts() {
                         </div>
 
                         <div className="space-y-4">
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <Input
                                     label="VENDOR"
                                     placeholder="e.g. Officeworks"
@@ -372,7 +373,7 @@ export function Receipts() {
                                 />
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <Input
                                     label="AMOUNT"
                                     type="number"

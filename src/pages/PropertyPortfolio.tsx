@@ -17,6 +17,7 @@ import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { db } from '../database/db';
 import { PropertyDepreciationHelper } from '../components/helpers/PropertyDepreciationHelper';
 import type { Property, PropertyIncome, PropertyExpense, PropertyLoan } from '../types';
+import Decimal from 'decimal.js';
 
 type PropertyTab = 'income' | 'expenses' | 'maintenance' | 'depreciation' | 'loans' | 'purchase';
 
@@ -161,7 +162,7 @@ export function PropertyPortfolio() {
         if (currentFinancialYear) {
             loadProperties();
         }
-    }, [currentFinancialYear, selectedProperty?.id, selectedProperty?.updatedAt]);
+    }, [currentFinancialYear, currentProfileId, selectedProperty?.id, selectedProperty?.updatedAt]);
 
     // Load income and expenses when property is selected
     const loadPropertyData = async () => {
@@ -377,12 +378,12 @@ export function PropertyPortfolio() {
     };
 
     // Calculate total income
-    const totalIncome = parseFloat(incomeForm.grossRent || '0') +
-        parseFloat(incomeForm.insurancePayouts || '0') +
-        parseFloat(incomeForm.otherIncome || '0');
+    const totalIncome = new Decimal(incomeForm.grossRent || 0)
+        .add(incomeForm.insurancePayouts || 0)
+        .add(incomeForm.otherIncome || 0);
 
     // Calculate total expenses
-    const totalExpenses = propertyExpenses.reduce((sum, exp) => sum + parseFloat(exp.amount || '0'), 0);
+    const totalExpenses = propertyExpenses.reduce((sum, exp) => sum.add(exp.amount || 0), new Decimal(0));
 
 
 
@@ -515,10 +516,10 @@ export function PropertyPortfolio() {
     };
 
     // Calculate total maintenance
-    const totalMaintenance = maintenanceRecords.reduce((sum, exp) => sum + parseFloat(exp.amount || '0'), 0);
+    const totalMaintenance = maintenanceRecords.reduce((sum, exp) => sum.add(exp.amount || 0), new Decimal(0));
 
     // Calculate total cost base
-    const totalCostBase = selectedProperty?.costBase?.reduce((sum, item) => sum + parseFloat(item.amount || '0'), 0) || 0;
+    const totalCostBase = selectedProperty?.costBase?.reduce((sum, item) => sum.add(item.amount || 0), new Decimal(0)) || new Decimal(0);
 
     // Add cost base item to property
     const handleAddCostBase = async () => {
@@ -1135,7 +1136,7 @@ export function PropertyPortfolio() {
                                                 <span className="text-sm text-text-secondary">All Types</span>
                                             </div>
                                             <span className="text-sm text-text-muted ml-auto">
-                                                Showing {maintenanceRecords.length} record{maintenanceRecords.length !== 1 ? 's' : ''} • Total: ${totalMaintenance.toLocaleString('en-AU', { minimumFractionDigits: 2 })}
+                                                Showing {maintenanceRecords.length} record{maintenanceRecords.length !== 1 ? 's' : ''} • Total: ${totalMaintenance.toNumber().toLocaleString('en-AU', { minimumFractionDigits: 2 })}
                                             </span>
                                         </div>
 
@@ -1232,7 +1233,7 @@ export function PropertyPortfolio() {
                                             <div>
                                                 <span className="text-text-secondary">Total Income: </span>
                                                 <span className="text-xl font-bold text-success">
-                                                    ${totalIncome.toLocaleString('en-AU', { minimumFractionDigits: 2 })}
+                                                    ${totalIncome.toNumber().toLocaleString('en-AU', { minimumFractionDigits: 2 })}
                                                 </span>
                                             </div>
                                             <Button onClick={handleSaveIncome}>
@@ -1443,7 +1444,7 @@ export function PropertyPortfolio() {
                                                 </div>
                                                 <div className="flex justify-between items-center">
                                                     <span className="text-text-secondary">
-                                                        Total Expenses: <span className="font-bold text-warning">${totalExpenses.toLocaleString('en-AU', { minimumFractionDigits: 2 })}</span>
+                                                        Total Expenses: <span className="font-bold text-warning">${totalExpenses.toNumber().toLocaleString('en-AU', { minimumFractionDigits: 2 })}</span>
                                                     </span>
                                                     <Button variant="secondary" onClick={() => setShowAddExpense(true)}>
                                                         <Plus className="w-4 h-4" />
@@ -1530,7 +1531,7 @@ export function PropertyPortfolio() {
                                             <div>
                                                 <span className="text-xs text-text-muted uppercase">Total Cost Base</span>
                                                 <p className="text-lg font-semibold text-accent mt-1.5">
-                                                    ${totalCostBase.toLocaleString('en-AU', { minimumFractionDigits: 2 })}
+                                                    ${totalCostBase.toNumber().toLocaleString('en-AU', { minimumFractionDigits: 2 })}
                                                 </p>
                                             </div>
                                         </div>

@@ -10,6 +10,7 @@ import { useTaxFlowStore } from '../stores/taxFlowStore';
 import { db } from '../database/db';
 import type { CryptoTransaction } from '../types';
 import { calculateCapitalGains } from '../utils/capitalGainsCalculator';
+import Decimal from 'decimal.js';
 
 export function Crypto() {
     const { currentFinancialYear, currentProfileId, isInitialized, initialize, refreshDashboard } = useTaxFlowStore();
@@ -50,19 +51,19 @@ export function Crypto() {
             }
         };
         loadTransactions();
-    }, [currentFinancialYear]);
+    }, [currentFinancialYear, currentProfileId]);
 
     // Calculate totals
     const totalBuys = transactions
         .filter(t => t.type === 'buy')
-        .reduce((sum, t) => sum + parseFloat(t.price || '0'), 0);
+        .reduce((sum, t) => sum.add(t.price || 0), new Decimal(0));
 
     const totalSells = transactions
         .filter(t => t.type === 'sell')
-        .reduce((sum, t) => sum + parseFloat(t.price || '0'), 0);
+        .reduce((sum, t) => sum.add(t.price || 0), new Decimal(0));
 
     const totalFees = transactions
-        .reduce((sum, t) => sum + parseFloat(t.fees || '0'), 0);
+        .reduce((sum, t) => sum.add(t.fees || 0), new Decimal(0));
 
     // Show delete confirmation
     const handleDelete = (tx: CryptoTransaction) => {
@@ -155,19 +156,19 @@ export function Crypto() {
                 <div className="grid grid-cols-4 gap-4">
                     <StatCard
                         title="TOTAL BUYS"
-                        value={`$${totalBuys.toLocaleString('en-AU', { minimumFractionDigits: 2 })}`}
+                        value={`$${totalBuys.toNumber().toLocaleString('en-AU', { minimumFractionDigits: 2 })}`}
                         icon={<TrendingUp className="w-5 h-5 text-success" />}
                         iconBgColor="bg-success/20"
                     />
                     <StatCard
                         title="TOTAL SELLS"
-                        value={`$${totalSells.toLocaleString('en-AU', { minimumFractionDigits: 2 })}`}
+                        value={`$${totalSells.toNumber().toLocaleString('en-AU', { minimumFractionDigits: 2 })}`}
                         icon={<TrendingDown className="w-5 h-5 text-warning" />}
                         iconBgColor="bg-warning/20"
                     />
                     <StatCard
                         title="TOTAL FEES"
-                        value={`$${totalFees.toLocaleString('en-AU', { minimumFractionDigits: 2 })}`}
+                        value={`$${totalFees.toNumber().toLocaleString('en-AU', { minimumFractionDigits: 2 })}`}
                         icon={<DollarSign className="w-5 h-5 text-danger" />}
                         iconBgColor="bg-danger/20"
                     />

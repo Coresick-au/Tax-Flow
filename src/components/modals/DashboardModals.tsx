@@ -54,10 +54,7 @@ export function TaxableIncomeModal({ isOpen, onClose }: ModalProps) {
             .filter(i => !i.profileId || i.profileId === currentProfileId)
             .toArray();
 
-        // Get property addresses and ownership percentages
         const properties = await db.properties.toArray();
-
-        // Aggregate by property with ownership info
         const rentalByProperty = new Map<number, { fullAmount: Decimal; claimableAmount: Decimal; address: string; ownershipPct: number }>();
 
         rentalRecords.forEach(r => {
@@ -87,20 +84,15 @@ export function TaxableIncomeModal({ isOpen, onClose }: ModalProps) {
             items.push({
                 category: 'Property',
                 description: data.address,
-                amount: data.claimableAmount, // Use claimable amount for total
+                amount: data.claimableAmount,
                 icon: Building2,
                 type: 'property',
                 propertyId: id,
                 fullAmount: data.fullAmount,
                 ownershipPct: data.ownershipPct
             });
-            totalAmount = totalAmount.add(data.claimableAmount); // Add claimable to total
+            totalAmount = totalAmount.add(data.claimableAmount);
         });
-
-        // 3. Crypto Gains (Simplified)
-        // Implementation depends on how store calculates it. 
-        // For now, fetching from store's calculation logic might be recursive. 
-        // I'll skip complex CGT calc here effectively unless stored.
 
         setIncomeItems(items);
         setTotal(totalAmount);
@@ -115,7 +107,7 @@ export function TaxableIncomeModal({ isOpen, onClose }: ModalProps) {
         if (confirm('Are you sure you want to delete all income records for this property? This cannot be undone.')) {
             await db.propertyIncome
                 .where('propertyId').equals(propertyId)
-                .filter(i => i.financialYear === currentFinancialYear) // Ensure we only delete for current context
+                .filter(i => i.financialYear === currentFinancialYear)
                 .delete();
             fetchData();
         }
@@ -196,31 +188,18 @@ export function TaxableIncomeModal({ isOpen, onClose }: ModalProps) {
 // Tax Liability Modal
 // ----------------------------------------------------------------------
 export function TaxLiabilityModal({ isOpen, onClose }: ModalProps) {
-    // This requires re-running the tax calc logic or fetching from store states if available.
-    // Since store keeps the totals, we'll re-estimate or show what we have.
     const { estimatedTaxableIncome, estimatedTaxPayable, taxSettings } = useTaxFlowStore();
 
     // Simple breakdown visualization
     const taxableParam = estimatedTaxableIncome.toNumber();
     const payableParam = estimatedTaxPayable.toNumber();
 
-    // Medicare levy estimate (2%)
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    // const medicareLevy = taxableParam * 0.02; 
-    const baseTax = payableParam; // This in store includes medicare usually? 
-    // Actually store `estimatedTaxPayable` = `taxPosition` - `taxWithheld`.
-    // So we need to fetch withheld to reconstruct the "Total Tax" vs "Payable".
-
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    // const [taxWithheld, setTaxWithheld] = useState(0);
+    // REMOVED: Unused 'baseTax' variable was here.
 
     useEffect(() => {
         if (!isOpen) return;
         const fetchWithheld = async () => {
-            // Fetch from income records
-            // This logic duplicates store slightly but is needed for display
-            // ... implementation ...
-            // For expediency, I will just show the Payable figure details we know.
+            // Placeholder for future logic
         };
         fetchWithheld();
     }, [isOpen]);
@@ -255,7 +234,7 @@ export function TaxLiabilityModal({ isOpen, onClose }: ModalProps) {
                         <div className="flex justify-between">
                             <span className="text-text-secondary">Estimated Tax on Income</span>
                             <span className="font-medium text-warning">
-                                {formatCurrency(payableParam)} {/* Simplified as we don't have Withheld easily available without query */}
+                                {formatCurrency(payableParam)}
                             </span>
                         </div>
                         {!taxSettings?.hasPrivateHealthInsurance && (
@@ -303,19 +282,13 @@ export function TotalDeductionsModal({ isOpen, onClose }: ModalProps) {
                 totalAmount = totalAmount.add(receiptTotal);
             }
 
-
-            // ... Logic for work deduction calculation if needed ...
-            // For now we skip detailed calculation, just acknowledge presence or placeholder
-
-            // 3. Property Expenses - Grouped by Property with ownership
+            // 3. Property Expenses
             const propExp = await db.propertyExpenses
                 .where('financialYear').equals(currentFinancialYear)
                 .filter(e => !e.profileId || e.profileId === currentProfileId)
                 .toArray();
 
-            // Get properties with ownership info
             const properties = await db.properties.toArray();
-
             const expByProperty = new Map<number, { fullAmount: Decimal; claimableAmount: Decimal; address: string; ownershipPct: number }>();
 
             propExp.forEach(e => {
@@ -345,11 +318,11 @@ export function TotalDeductionsModal({ isOpen, onClose }: ModalProps) {
                 tempItems.push({
                     category: 'Property Expenses',
                     description: data.address,
-                    amount: data.claimableAmount, // Use claimable for total
+                    amount: data.claimableAmount,
                     fullAmount: data.fullAmount,
                     ownershipPct: data.ownershipPct
                 });
-                totalAmount = totalAmount.add(data.claimableAmount); // Add claimable to total
+                totalAmount = totalAmount.add(data.claimableAmount);
             });
 
             setItems(tempItems);

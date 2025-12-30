@@ -68,7 +68,7 @@ export function Deductions() {
                     ratePerHour: new Decimal(0.67),
                     totalDeduction: existing.wfhMethod === 'fixed_rate'
                         ? new Decimal(existing.totalHoursWorked).mul(0.67)
-                        : new Decimal(Object.values(existing.actualCosts).reduce((sum, v) => sum + (parseFloat(v) || 0), 0)),
+                        : new Decimal(Object.values(existing.actualCosts).reduce((sum, v) => new Decimal(sum).add(v || 0).toNumber(), 0)),
                     breakdown: [],
                 });
             }
@@ -168,8 +168,6 @@ export function Deductions() {
         }
 
         await refreshDashboard();
-
-        console.log('Saved WFH result to database:', result);
     };
 
     const tabs = [
@@ -211,7 +209,7 @@ export function Deductions() {
                 />
                 <StatCard
                     title="Asset Depreciation"
-                    value={`$${assets.reduce((sum, a) => sum + (parseFloat(a.cost) * (a.workUsePercentage / 100)), 0).toLocaleString('en-AU', { maximumFractionDigits: 0 })}`}
+                    value={`$${assets.reduce((sum, a) => sum.add(new Decimal(a.cost || 0).mul(a.workUsePercentage / 100)), new Decimal(0)).toNumber().toLocaleString('en-AU', { maximumFractionDigits: 0 })}`}
                     subtitle={`${assets.length} assets tracked`}
                     icon={<Calculator className="w-5 h-5 text-info" />}
                     iconBgColor="bg-info/20"
@@ -380,7 +378,7 @@ export function Deductions() {
                                 <div className="flex justify-between items-center">
                                     <span className="text-text-secondary">
                                         Total Expenses: <span className="font-bold text-accent">
-                                            ${receipts.reduce((sum, r) => sum + parseFloat(r.amount || '0'), 0).toLocaleString('en-AU', { minimumFractionDigits: 2 })}
+                                            ${receipts.reduce((sum, r) => sum.add(r.amount || 0), new Decimal(0)).toNumber().toLocaleString('en-AU', { minimumFractionDigits: 2 })}
                                         </span>
                                     </span>
                                 </div>

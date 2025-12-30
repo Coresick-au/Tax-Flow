@@ -27,8 +27,8 @@ export function FinancialTrendChart() {
         const fetchData = async () => {
             if (!currentProfileId) return;
 
-            const [startYearStr] = currentFinancialYear.split('-');
-            const startYear = parseInt(startYearStr);
+            // REMOVED: Unused startYear calculation lines were here
+
             const months = [
                 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
                 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'
@@ -39,7 +39,6 @@ export function FinancialTrendChart() {
                 name: m,
                 income: new Decimal(0),
                 expenses: new Decimal(0),
-                // Helper for sorting/dating
                 monthIndex: months.indexOf(m)
             }));
 
@@ -61,8 +60,7 @@ export function FinancialTrendChart() {
                 }
             });
 
-            // 2. Process Property Rent (Annual / 12 for estimation)
-            // This is an approximation as we capture annual totals
+            // 2. Process Property Rent
             const properyIncomes = await db.propertyIncome
                 .where('financialYear')
                 .equals(currentFinancialYear)
@@ -77,7 +75,7 @@ export function FinancialTrendChart() {
                 });
             }
 
-            // 3. Process Receipts (General Expenses)
+            // 3. Process Receipts
             const receipts = await db.receipts
                 .where('financialYear')
                 .equals(currentFinancialYear)
@@ -131,7 +129,7 @@ export function FinancialTrendChart() {
 
     if (data.every(d => d.income === 0 && d.expenses === 0)) {
         return (
-            <div className="h-64 flex items-center justify-center">
+            <div className="h-64 flex items-center justify-center bg-background-elevated/50 rounded-lg">
                 <div className="text-center text-text-muted">
                     <p className="text-sm">No financial data available for this year yet.</p>
                 </div>
@@ -140,7 +138,7 @@ export function FinancialTrendChart() {
     }
 
     return (
-        <div style={{ width: '100%', height: 256, minHeight: 256 }}>
+        <div style={{ width: '100%', height: 300, minHeight: 300 }}>
             <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                     <defs>
@@ -170,7 +168,8 @@ export function FinancialTrendChart() {
                     <Tooltip
                         contentStyle={{ backgroundColor: '#1F2937', borderColor: '#374151', borderRadius: '0.5rem' }}
                         itemStyle={{ color: '#F3F4F6' }}
-                        formatter={(value: number) => [`$${value.toLocaleString()}`, undefined]}
+                        // CHANGED: Use 'any' type for value to avoid TS2322 error with Recharts types
+                        formatter={(value: any) => [`$${value.toLocaleString()}`, undefined]}
                     />
                     <Area
                         type="monotone"

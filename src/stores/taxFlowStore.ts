@@ -406,15 +406,17 @@ export const useTaxFlowStore = create<TaxFlowState>((set, get) => ({
 
             // Calculate tax payable using brackets
             let taxPayable = new Decimal(0);
-            const income = taxableIncome.toNumber();
 
-            for (const bracket of taxSettings.taxBrackets) {
-                if (income >= bracket.minIncome) {
-                    if (bracket.maxIncome === null || income <= bracket.maxIncome) {
+            for (const bracket of (taxSettings.taxBrackets || [])) {
+                const min = new Decimal(bracket.minIncome);
+                const max = bracket.maxIncome !== null ? new Decimal(bracket.maxIncome) : null;
+
+                if (taxableIncome.gte(min)) {
+                    if (max === null || taxableIncome.lte(max)) {
                         // This is the applicable bracket
-                        const taxableInBracket = income - bracket.minIncome + 1;
+                        const taxableInBracket = taxableIncome.sub(min).add(1);
                         taxPayable = new Decimal(bracket.baseTax).add(
-                            new Decimal(taxableInBracket).mul(bracket.rate).div(100)
+                            taxableInBracket.mul(bracket.rate).div(100)
                         );
                         break;
                     }
@@ -454,7 +456,7 @@ export const useTaxFlowStore = create<TaxFlowState>((set, get) => ({
                 if (!deductionsByCategory[atoCategory]) {
                     deductionsByCategory[atoCategory] = new Decimal(0);
                 }
-                deductionsByCategory[atoCategory] = deductionsByCategory[atoCategory].add(receipt.amount || '0');
+                deductionsByCategory[atoCategory] = deductionsByCategory[atoCategory].add(receipt.amount || 0);
             }
 
             // Get occupation code from user profile (default to 'default')
@@ -492,7 +494,7 @@ export const useTaxFlowStore = create<TaxFlowState>((set, get) => ({
                 type: 'expense' as const,
                 description: r.vendor,
                 category: r.category,
-                amount: new Decimal(r.amount),
+                amount: new Decimal(r.amount || 0),
             }));
 
             set({ recentActivity });

@@ -119,7 +119,7 @@ export async function importDatabase(jsonData: string): Promise<void> {
 
         // Find a default profile ID from the imported data to assign to legacy records
         let defaultProfileId: string | undefined;
-        if (data.userProfile && data.userProfile.length > 0) {
+        if (data.userProfile?.length > 0) {
             defaultProfileId = data.userProfile[0].profileId;
         }
 

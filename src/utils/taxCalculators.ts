@@ -6,13 +6,12 @@ import type { WorkDeductions, DepreciableAsset, CryptoTransaction } from '../typ
 export function calculateWorkDeduction(record: WorkDeductions): Decimal {
     if (record.wfhMethod === 'fixed_rate') {
         // 67 cents per hour
-        return new Decimal(record.totalHoursWorked).mul(0.67);
+        return new Decimal(record.totalHoursWorked || 0).mul(0.67);
     } else {
         // Actual costs - sum all string values
         const costs = Object.values(record.actualCosts);
         return costs.reduce((sum, cost) => {
-            const val = parseFloat(cost) || 0;
-            return sum.add(val);
+            return sum.add(new Decimal(cost || 0));
         }, new Decimal(0));
     }
 }
@@ -20,9 +19,9 @@ export function calculateWorkDeduction(record: WorkDeductions): Decimal {
 // ==================== Depreciation Calculator ====================
 
 export function calculateDepreciation(asset: DepreciableAsset, financialYearEnd: Date): Decimal {
-    const cost = new Decimal(asset.cost);
-    const workUse = new Decimal(asset.workUsePercentage).div(100);
-    const life = new Decimal(asset.effectiveLifeYears);
+    const cost = new Decimal(asset.cost || 0);
+    const workUse = new Decimal(asset.workUsePercentage || 0).div(100);
+    const life = new Decimal(asset.effectiveLifeYears || 1);
 
     // Days held in this financial year
     // Start date is later of: Purchase Date OR Start of FY (July 1)
@@ -88,8 +87,8 @@ export function calculateCapitalGains(transactions: CryptoTransaction[]): Decima
     let totalCapitalLoss = new Decimal(0); // Can only offset gains
 
     for (const tx of sorted) {
-        const price = new Decimal(tx.price);
-        const quantity = new Decimal(tx.quantity);
+        const price = new Decimal(tx.price || 0);
+        const quantity = new Decimal(tx.quantity || 1);
 
         if (tx.type === 'buy') {
             const pricePerUnit = price.div(quantity);

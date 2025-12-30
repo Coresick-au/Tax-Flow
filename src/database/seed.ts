@@ -30,7 +30,6 @@ export async function seedTaxSettings(): Promise<void> {
 
     if (!existingSettings) {
         await db.taxSettings.add(DEFAULT_TAX_SETTINGS_2024_25);
-        console.log('Seeded 2024-2025 tax settings');
     }
 }
 
