@@ -1,31 +1,57 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Sparkles, Copy, Check, Building2, Calendar, AlertCircle, X } from 'lucide-react';
 import type { Property } from '../../types';
+import { useTaxFlowStore } from '../../stores/taxFlowStore';
 
 interface PropertyDepreciationHelperProps {
     property: Property;
     onClose: () => void;
+    onUpdate?: (updates: Partial<Property>) => void;
 }
 
-export function PropertyDepreciationHelper({ property, onClose }: PropertyDepreciationHelperProps) {
-    const [buildingAge, setBuildingAge] = useState('');
-    const [buildingValue, setBuildingValue] = useState('');
-    const [hasDepreciationSchedule, setHasDepreciationSchedule] = useState<'yes' | 'no' | 'unknown'>('unknown');
-    const [scheduleDetails, setScheduleDetails] = useState('');
+export function PropertyDepreciationHelper({ property, onClose, onUpdate }: PropertyDepreciationHelperProps) {
+    const { currentFinancialYear } = useTaxFlowStore();
+
+    // Initialize state from property's saved data
+    const [buildingAge, setBuildingAge] = useState(property.buildingAge || '');
+    const [buildingValue, setBuildingValue] = useState(property.buildingValue || '');
+    const [hasDepreciationSchedule, setHasDepreciationSchedule] = useState<'yes' | 'no' | 'unknown'>(
+        property.hasDepreciationSchedule || 'unknown'
+    );
+    const [scheduleDetails, setScheduleDetails] = useState(property.depreciationScheduleDetails || '');
     const [copied, setCopied] = useState(false);
 
+    // Auto-save changes when form values change
+    const saveChanges = useCallback(() => {
+        if (onUpdate) {
+            onUpdate({
+                buildingAge,
+                buildingValue,
+                hasDepreciationSchedule,
+                depreciationScheduleDetails: scheduleDetails,
+            });
+        }
+    }, [buildingAge, buildingValue, hasDepreciationSchedule, scheduleDetails, onUpdate]);
+
+    // Debounce saves to avoid too many updates
+    useEffect(() => {
+        const timer = setTimeout(saveChanges, 500);
+        return () => clearTimeout(timer);
+    }, [saveChanges]);
+
+    // currentFinancialYear is in format "2024-2025"
+    const [fyStart, fyEnd] = currentFinancialYear.split('-').map(Number);
     const currentYear = new Date().getFullYear();
-    const fyStart = new Date().getMonth() >= 6 ? currentYear : currentYear - 1;
 
     // Generate the AI prompt for property depreciation
     const generatePrompt = () => {
         const purchaseYear = property.purchaseDate ? new Date(property.purchaseDate).getFullYear() : '[YEAR]';
         const propertyAge = buildingAge || '[BUILDING AGE]';
 
-        let prompt = `I need help understanding property depreciation for my Australian investment property tax return (FY ${fyStart}-${fyStart + 1}).
+        let prompt = `I need help understanding property depreciation for my Australian investment property tax return (FY ${fyStart}-${fyEnd}).
 
 **Property Details:**
 - Address: ${property.address}, ${property.suburb} ${property.state} ${property.postcode}
@@ -73,7 +99,8 @@ Please help me understand:
 - Use current ATO guidelines for rental property depreciation
 - Consider the property was purchased in ${purchaseYear}
 - Apply Division 40 and Division 43 rules correctly
-- Note any changes from the 2017 depreciation law changes for second-hand assets`;
+- Note any changes from the 2017 depreciation law changes for second-hand assets
+- **Format the key data (Total Claim, Div 40, Div 43) in a code block** so I can easily copy it`;
 
         return prompt;
     };
@@ -146,8 +173,8 @@ Please help me understand:
                         <button
                             onClick={() => setHasDepreciationSchedule('yes')}
                             className={`flex-1 px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${hasDepreciationSchedule === 'yes'
-                                    ? 'bg-accent/20 border-accent text-accent'
-                                    : 'bg-background-elevated border-border text-text-secondary hover:border-primary'
+                                ? 'bg-accent/20 border-accent text-accent'
+                                : 'bg-background-elevated border-border text-text-secondary hover:border-primary'
                                 }`}
                         >
                             Yes, I have one
@@ -155,8 +182,8 @@ Please help me understand:
                         <button
                             onClick={() => setHasDepreciationSchedule('no')}
                             className={`flex-1 px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${hasDepreciationSchedule === 'no'
-                                    ? 'bg-accent/20 border-accent text-accent'
-                                    : 'bg-background-elevated border-border text-text-secondary hover:border-primary'
+                                ? 'bg-accent/20 border-accent text-accent'
+                                : 'bg-background-elevated border-border text-text-secondary hover:border-primary'
                                 }`}
                         >
                             No, I don't
@@ -164,8 +191,8 @@ Please help me understand:
                         <button
                             onClick={() => setHasDepreciationSchedule('unknown')}
                             className={`flex-1 px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${hasDepreciationSchedule === 'unknown'
-                                    ? 'bg-accent/20 border-accent text-accent'
-                                    : 'bg-background-elevated border-border text-text-secondary hover:border-primary'
+                                ? 'bg-accent/20 border-accent text-accent'
+                                : 'bg-background-elevated border-border text-text-secondary hover:border-primary'
                                 }`}
                         >
                             Not sure

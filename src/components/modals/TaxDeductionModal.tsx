@@ -2,13 +2,15 @@ import { useState, useRef } from 'react';
 import { X, Upload, FileText, AlertTriangle } from 'lucide-react';
 import { Button, Input } from '../ui';
 import { db } from '../../database/db';
-import { useTaxFlowStore } from '../../stores/taxFlowStore';
+// import { useTaxFlowStore } from '../../stores/taxFlowStore';
 import type { ExpenseCategory, Receipt } from '../../types';
 
-interface DeductionModalProps {
+interface TaxDeductionModalProps {
     isOpen: boolean;
     onClose: () => void;
     onSave: () => void;
+    currentFinancialYear: string;
+    currentProfileId: string | null;
 }
 
 const CATEGORY_LABELS: Record<ExpenseCategory, string> = {
@@ -26,8 +28,8 @@ const CATEGORY_LABELS: Record<ExpenseCategory, string> = {
 
 const GREY_AREA_CATEGORIES: ExpenseCategory[] = ['work_clothing', 'self_education', 'home_office', 'car_expenses'];
 
-export function DeductionModal({ isOpen, onClose, onSave }: DeductionModalProps) {
-    const { currentFinancialYear, currentProfileId, refreshDashboard } = useTaxFlowStore();
+export function TaxDeductionModal({ isOpen, onClose, onSave, currentFinancialYear, currentProfileId }: TaxDeductionModalProps) {
+    // const { currentFinancialYear, currentProfileId, refreshDashboard } = useTaxFlowStore(); // Moved to props to avoid hook error
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const [formData, setFormData] = useState({
@@ -68,7 +70,9 @@ export function DeductionModal({ isOpen, onClose, onSave }: DeductionModalProps)
 
             // Note: In a real app, we'd handle file upload to storage here
 
-            await refreshDashboard();
+            // Note: In a real app, we'd handle file upload to storage here
+
+            // await refreshDashboard(); // Handled by parent onSave
             onSave();
             onClose();
 

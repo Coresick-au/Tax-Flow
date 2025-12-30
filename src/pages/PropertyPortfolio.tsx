@@ -8,6 +8,7 @@ import {
     Wrench,
     ExternalLink,
     Trash2,
+    Pencil,
 } from 'lucide-react';
 import { useTaxFlowStore } from '../stores/taxFlowStore';
 import { DashboardLayout } from '../components/layout';
@@ -18,8 +19,26 @@ import type { Property, PropertyIncome, PropertyExpense, PropertyLoan } from '..
 
 type PropertyTab = 'income' | 'expenses' | 'maintenance' | 'depreciation' | 'loans' | 'purchase';
 
+// Helper to check if property is relevant for the current FY
+const isPropertyRelevantForFY = (property: Property, fy: string) => {
+    const [startYear] = fy.split('-').map(Number);
+    const fyStart = new Date(startYear, 6, 1);      // July 1
+    const fyEnd = new Date(startYear + 1, 5, 30);   // June 30
+
+    const purchased = new Date(property.purchaseDate);
+    const sold = property.saleDate ? new Date(property.saleDate) : null;
+
+    // Purchased after this FY?
+    if (purchased > fyEnd) return false;
+
+    // Sold before this FY?
+    if (sold && sold < fyStart) return false;
+
+    return true;
+};
+
 export function PropertyPortfolio() {
-    const { initialize, isInitialized, currentFinancialYear, refreshDashboard } = useTaxFlowStore();
+    const { initialize, isInitialized, currentFinancialYear, currentProfileId, refreshDashboard } = useTaxFlowStore();
     const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
     const [activeTab, setActiveTab] = useState<PropertyTab>('income');
     const [searchQuery, setSearchQuery] = useState('');
@@ -44,6 +63,10 @@ export function PropertyPortfolio() {
         category: 'management_fees',
         description: '',
         amount: '',
+        isRecurrent: false,
+        recurrenceAmount: '',
+        recurrenceFrequency: 'monthly',
+        recurrenceCount: '',
     });
 
     // Add Property state
@@ -96,6 +119,12 @@ export function PropertyPortfolio() {
         annualInterestPaid: '',
     });
 
+    // Sale form state
+    const [saleForm, setSaleForm] = useState({
+        date: '',
+        price: '',
+    });
+
     useEffect(() => {
         if (!isInitialized) {
             initialize();
@@ -106,16 +135,20 @@ export function PropertyPortfolio() {
     useEffect(() => {
         const loadProperties = async () => {
             try {
-                const dbProperties = await db.properties
-                    .where('financialYear')
-                    .equals(currentFinancialYear)
+                // Fetch properties for current profile and filter for current FY
+                const allProperties = await db.properties
+                    .where('profileId')
+                    .equals(currentProfileId || '')
                     .toArray();
+                const relevantProperties = allProperties.filter(p =>
+                    isPropertyRelevantForFY(p, currentFinancialYear)
+                );
 
-                setProperties(dbProperties);
+                setProperties(relevantProperties);
 
                 // Select first property by default
-                if (dbProperties.length > 0 && !selectedProperty) {
-                    setSelectedProperty(dbProperties[0]);
+                if (relevantProperties.length > 0 && !selectedProperty) {
+                    setSelectedProperty(relevantProperties[0]);
                 }
             } catch (error) {
                 console.error('Failed to load properties:', error);
@@ -125,7 +158,7 @@ export function PropertyPortfolio() {
         if (currentFinancialYear) {
             loadProperties();
         }
-    }, [currentFinancialYear, selectedProperty]);
+    }, [currentFinancialYear, selectedProperty?.id, selectedProperty?.updatedAt]);
 
     // Load income and expenses when property is selected
     const loadPropertyData = async () => {
@@ -227,9 +260,9 @@ export function PropertyPortfolio() {
                 setSelectedProperty(updated);
             }
         } else {
-            // Create new
+            // Create new - properties are tied to profile
             const newProperty = {
-                financialYear: currentFinancialYear,
+                profileId: currentProfileId || undefined,
                 address: newPropertyForm.address,
                 suburb: newPropertyForm.suburb,
                 state: newPropertyForm.state,
@@ -293,12 +326,18 @@ export function PropertyPortfolio() {
 
     const confirmDeleteProperty = async () => {
         if (deleteConfirm.id) {
+            // Cascade delete related records
+            await db.propertyIncome.where('propertyId').equals(deleteConfirm.id).delete();
+            await db.propertyExpenses.where('propertyId').equals(deleteConfirm.id).delete();
+            await db.propertyLoans.where('propertyId').equals(deleteConfirm.id).delete();
+
             await db.properties.delete(deleteConfirm.id);
             const remaining = properties.filter(p => p.id !== deleteConfirm.id);
             setProperties(remaining);
             setSelectedProperty(remaining.length > 0 ? remaining[0] : null);
         }
         setDeleteConfirm({ isOpen: false, id: null, address: '' });
+        refreshDashboard();
     };
 
     // Save income to database
@@ -306,6 +345,7 @@ export function PropertyPortfolio() {
         if (!selectedProperty?.id) return;
 
         const incomeData = {
+            profileId: currentProfileId || undefined,
             propertyId: selectedProperty.id,
             financialYear: currentFinancialYear,
             grossRent: incomeForm.grossRent,
@@ -348,6 +388,7 @@ export function PropertyPortfolio() {
         if (!selectedProperty?.id || !maintenanceForm.description.trim() || !maintenanceForm.amount) return;
 
         const maintenanceRecord: Omit<PropertyExpense, 'id'> = {
+            profileId: currentProfileId || undefined,
             propertyId: selectedProperty.id,
             financialYear: currentFinancialYear,
             category: maintenanceForm.isCapitalImprovement ? 'capital_improvement' : 'repairs',
@@ -376,12 +417,32 @@ export function PropertyPortfolio() {
         });
     };
 
-    // Add Recurrent Expense
-    const handleAddExpense = async () => {
+    // State for editing expense
+    const [editingExpenseId, setEditingExpenseId] = useState<number | null>(null);
+
+    // Edit Expense
+    const handleEditExpense = (expense: PropertyExpense) => {
+        setExpenseForm({
+            date: new Date(expense.date).toISOString().split('T')[0],
+            category: expense.category,
+            description: expense.description || '',
+            amount: expense.amount,
+            isRecurrent: !!expense.recurrenceFrequency,
+            recurrenceAmount: expense.recurrenceAmount || '',
+            recurrenceFrequency: expense.recurrenceFrequency || 'monthly',
+            recurrenceCount: expense.recurrenceCount?.toString() || '',
+        });
+        setEditingExpenseId(expense.id || null);
+        setShowAddExpense(true);
+    };
+
+    // Add or Update Expense
+    const handleSaveExpense = async () => {
         if (!selectedProperty?.id || !expenseForm.amount || !expenseForm.date) return;
 
         try {
-            await db.propertyExpenses.add({
+            const expenseData = {
+                profileId: currentProfileId || undefined,
                 propertyId: selectedProperty.id,
                 financialYear: currentFinancialYear,
                 date: new Date(expenseForm.date),
@@ -389,8 +450,23 @@ export function PropertyPortfolio() {
                 description: expenseForm.description,
                 amount: expenseForm.amount,
                 isCapitalImprovement: false,
-                createdAt: new Date(),
-            });
+                // Recurrence details
+                recurrenceAmount: expenseForm.isRecurrent ? expenseForm.recurrenceAmount : undefined,
+                recurrenceFrequency: expenseForm.isRecurrent ? expenseForm.recurrenceFrequency as any : undefined,
+                recurrenceCount: expenseForm.isRecurrent ? parseInt(expenseForm.recurrenceCount) : undefined,
+                updatedAt: new Date(),
+            };
+
+            if (editingExpenseId) {
+                // Update
+                await db.propertyExpenses.update(editingExpenseId, expenseData);
+            } else {
+                // Add new
+                await db.propertyExpenses.add({
+                    ...expenseData,
+                    createdAt: new Date(),
+                });
+            }
 
             // Reset form
             setExpenseForm({
@@ -398,15 +474,40 @@ export function PropertyPortfolio() {
                 category: 'management_fees',
                 description: '',
                 amount: '',
+                isRecurrent: false,
+                recurrenceAmount: '',
+                recurrenceFrequency: 'monthly',
+                recurrenceCount: '',
             });
             setShowAddExpense(false);
+            setEditingExpenseId(null);
 
             // Reload
             loadPropertyData();
-            // Also refresh overall dashboard stats
             refreshDashboard();
         } catch (error) {
-            console.error('Failed to add expense:', error);
+            console.error('Failed to save expense:', error);
+        }
+    };
+
+
+    // Delete expense
+    const handleDeleteExpense = async (expenseId: number) => {
+        if (!selectedProperty?.id) return;
+
+        if (confirm('Are you sure you want to delete this expense?')) {
+            await db.propertyExpenses.delete(expenseId);
+
+            // Reload expenses
+            const allExpenses = await db.propertyExpenses
+                .where({ propertyId: selectedProperty.id, financialYear: currentFinancialYear })
+                .toArray();
+
+            const regularExpenses = allExpenses.filter(e => e.category !== 'repairs' && e.category !== 'capital_improvement');
+            setPropertyExpenses(regularExpenses);
+
+            // Refresh dashboard
+            refreshDashboard();
         }
     };
 
@@ -486,6 +587,7 @@ export function PropertyPortfolio() {
         if (!selectedProperty?.id || !loanForm.lender || !loanForm.annualInterestPaid) return;
 
         const newLoan: PropertyLoan = {
+            profileId: currentProfileId || undefined,
             propertyId: selectedProperty.id,
             financialYear: currentFinancialYear,
             lender: loanForm.lender,
@@ -535,6 +637,48 @@ export function PropertyPortfolio() {
             .where({ propertyId: selectedProperty.id, financialYear: currentFinancialYear })
             .toArray();
         setPropertyLoans(loans);
+
+        refreshDashboard();
+    };
+
+    // Mark property as sold
+    const handleMarkSold = async () => {
+        if (!selectedProperty?.id || !saleForm.date || !saleForm.price) return;
+
+        await db.properties.update(selectedProperty.id, {
+            status: 'sold',
+            saleDate: new Date(saleForm.date),
+            salePrice: saleForm.price,
+            updatedAt: new Date(),
+        });
+
+        // Reload property and refresh list
+        const updated = await db.properties.get(selectedProperty.id);
+        if (updated) {
+            setSelectedProperty(updated);
+            setProperties(prev => prev.map(p => p.id === updated.id ? updated : p));
+        }
+
+        setSaleForm({ date: '', price: '' });
+        refreshDashboard();
+    };
+
+    // Undo property sale
+    const handleUndoSale = async () => {
+        if (!selectedProperty?.id) return;
+
+        await db.properties.update(selectedProperty.id, {
+            status: 'active',
+            saleDate: undefined,
+            salePrice: undefined,
+            updatedAt: new Date(),
+        });
+
+        const updated = await db.properties.get(selectedProperty.id);
+        if (updated) {
+            setSelectedProperty(updated);
+            setProperties(prev => prev.map(p => p.id === updated.id ? updated : p));
+        }
 
         refreshDashboard();
     };
@@ -677,8 +821,18 @@ export function PropertyPortfolio() {
                                                 <p className="text-xs text-text-muted truncate">
                                                     {property.suburb} {property.state} {property.postcode}
                                                 </p>
-                                                <div className="text-xs font-medium mt-1 text-text-secondary">
-                                                    {property.status.toUpperCase()}
+                                                <div className="flex items-center gap-2 mt-1">
+                                                    <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${property.status === 'sold'
+                                                        ? 'bg-warning/20 text-warning'
+                                                        : 'bg-success/20 text-success'
+                                                        }`}>
+                                                        {property.status.toUpperCase()}
+                                                    </span>
+                                                    {property.status === 'sold' && property.saleDate && (
+                                                        <span className="text-[10px] text-text-muted">
+                                                            ({new Date(property.saleDate).getFullYear()})
+                                                        </span>
+                                                    )}
                                                 </div>
                                             </div>
                                         </div>
@@ -782,7 +936,7 @@ export function PropertyPortfolio() {
                                         </p>
                                         <div className="flex items-center gap-4 mt-2 text-sm text-text-secondary">
                                             <span>Ownership: <span className="text-text-primary font-medium">{selectedProperty.ownershipSplit[0]?.percentage}%</span></span>
-                                            <span>Purchased: <span className="text-text-primary font-medium">{selectedProperty.purchaseDate.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}</span></span>
+                                            <span>Purchased: <span className="text-text-primary font-medium">{new Date(selectedProperty.purchaseDate).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}</span></span>
                                             <span>Cost Base: <span className="text-text-primary font-medium">
                                                 {(() => {
                                                     const totalCostBase = selectedProperty.costBase?.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0) || 0;
@@ -1092,7 +1246,136 @@ export function PropertyPortfolio() {
                                             subtitle="Deductible property expenses (excluding maintenance)"
                                         />
 
-                                        {propertyExpenses.length === 0 ? (
+                                        {/* Add Expense Form - always show when toggled */}
+                                        {showAddExpense && (
+                                            <div className="mb-6 p-4 bg-background-elevated rounded-lg border border-border">
+                                                <h4 className="font-medium text-sm mb-3">{editingExpenseId ? 'Edit Expense' : 'New Expense'}</h4>
+                                                <div className="grid grid-cols-2 gap-4 mb-4">
+                                                    <Input
+                                                        label="DATE"
+                                                        type="date"
+                                                        value={expenseForm.date}
+                                                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setExpenseForm(prev => ({ ...prev, date: e.target.value }))}
+                                                    />
+                                                    <div>
+                                                        <label className="block text-xs text-text-muted mb-1.5">CATEGORY</label>
+                                                        <select
+                                                            className="w-full px-3 py-2 rounded-lg bg-background-elevated border border-border text-text-primary"
+                                                            value={expenseForm.category}
+                                                            onChange={(e) => setExpenseForm(prev => ({ ...prev, category: e.target.value }))}
+                                                        >
+                                                            <option value="management_fees">Management Fees</option>
+                                                            <option value="council_rates">Council Rates</option>
+                                                            <option value="water_rates">Water Rates</option>
+                                                            <option value="strata_fees">Strata / Body Corp</option>
+                                                            <option value="insurance">Insurance</option>
+                                                            <option value="interest">Loan Interest</option>
+                                                            <option value="land_tax">Land Tax</option>
+                                                            <option value="sundry">Sundry / Other</option>
+                                                        </select>
+                                                    </div>
+                                                    <Input
+                                                        label="DESCRIPTION"
+                                                        placeholder="Description"
+                                                        value={expenseForm.description}
+                                                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setExpenseForm(prev => ({ ...prev, description: e.target.value }))}
+                                                    />
+                                                    <Input
+                                                        label="AMOUNT"
+                                                        type="number"
+                                                        placeholder="0.00"
+                                                        leftIcon={<span className="text-text-muted">$</span>}
+                                                        value={expenseForm.amount}
+                                                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setExpenseForm(prev => ({ ...prev, amount: e.target.value }))}
+                                                        disabled={expenseForm.isRecurrent}
+                                                        hint={expenseForm.isRecurrent ? "Calculated automatically" : undefined}
+                                                    />
+                                                </div>
+
+                                                {/* Recurrent Expense Options */}
+                                                <div className="mb-4 p-3 bg-background-card rounded border border-border">
+                                                    <div className="flex items-center gap-2 mb-3">
+                                                        <input
+                                                            type="checkbox"
+                                                            id="isRecurrent"
+                                                            checked={expenseForm.isRecurrent}
+                                                            onChange={(e) => {
+                                                                const checked = e.target.checked;
+                                                                setExpenseForm(prev => ({
+                                                                    ...prev,
+                                                                    isRecurrent: checked,
+                                                                    // Clear calculation if unchecked
+                                                                    amount: checked ? prev.amount : ''
+                                                                }));
+                                                            }}
+                                                            className="rounded border-border text-accent focus:ring-accent"
+                                                        />
+                                                        <label htmlFor="isRecurrent" className="text-sm font-medium text-text-primary cursor-pointer">
+                                                            This is a recurrent/periodic expense
+                                                        </label>
+                                                    </div>
+
+                                                    {expenseForm.isRecurrent && (
+                                                        <div className="grid grid-cols-3 gap-3 pl-6">
+                                                            <Input
+                                                                label="AMOUNT PER PERIOD"
+                                                                type="number"
+                                                                placeholder="0.00"
+                                                                leftIcon={<span className="text-text-muted">$</span>}
+                                                                value={expenseForm.recurrenceAmount}
+                                                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                                                                    const val = e.target.value;
+                                                                    const count = expenseForm.recurrenceCount;
+                                                                    const total = (parseFloat(val || '0') * parseFloat(count || '0')).toFixed(2);
+                                                                    setExpenseForm(prev => ({
+                                                                        ...prev,
+                                                                        recurrenceAmount: val,
+                                                                        amount: (!val || !count) ? '' : total
+                                                                    }));
+                                                                }}
+                                                            />
+                                                            <div>
+                                                                <label className="block text-xs text-text-muted mb-1.5 uppercase">Frequency</label>
+                                                                <select
+                                                                    className="w-full px-3 py-2 rounded-lg bg-background-elevated border border-border text-text-primary text-sm"
+                                                                    value={expenseForm.recurrenceFrequency}
+                                                                    onChange={(e) => setExpenseForm(prev => ({ ...prev, recurrenceFrequency: e.target.value }))}
+                                                                >
+                                                                    <option value="weekly">Weekly</option>
+                                                                    <option value="fortnightly">Fortnightly</option>
+                                                                    <option value="monthly">Monthly</option>
+                                                                    <option value="quarterly">Quarterly</option>
+                                                                    <option value="annually">Annually</option>
+                                                                </select>
+                                                            </div>
+                                                            <Input
+                                                                label="NUMBER OF PERIODS"
+                                                                type="number"
+                                                                placeholder="e.g. 12"
+                                                                value={expenseForm.recurrenceCount}
+                                                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                                                                    const count = e.target.value;
+                                                                    const val = expenseForm.recurrenceAmount;
+                                                                    const total = (parseFloat(val || '0') * parseFloat(count || '0')).toFixed(2);
+                                                                    setExpenseForm(prev => ({
+                                                                        ...prev,
+                                                                        recurrenceCount: count,
+                                                                        amount: (!val || !count) ? '' : total
+                                                                    }));
+                                                                }}
+                                                            />
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                <div className="flex justify-end gap-2">
+                                                    <Button variant="secondary" size="sm" onClick={() => { setShowAddExpense(false); setEditingExpenseId(null); }}>Cancel</Button>
+                                                    <Button size="sm" onClick={handleSaveExpense}>{editingExpenseId ? 'Update Expense' : 'Save Expense'}</Button>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {propertyExpenses.length === 0 && !showAddExpense ? (
                                             <div className="text-center py-12">
                                                 <DollarSign className="w-12 h-12 text-text-muted mx-auto mb-4" />
                                                 <p className="text-text-secondary mb-4">No expenses recorded yet</p>
@@ -1101,57 +1384,9 @@ export function PropertyPortfolio() {
                                                     Add Expense
                                                 </Button>
                                             </div>
-                                        ) : (
+                                        ) : propertyExpenses.length > 0 && (
                                             <>
-                                                {/* Add Expense Form */}
-                                                {showAddExpense && (
-                                                    <div className="mb-6 p-4 bg-background-elevated rounded-lg border border-border">
-                                                        <h4 className="font-medium text-sm mb-3">New Expense</h4>
-                                                        <div className="grid grid-cols-2 gap-4 mb-4">
-                                                            <Input
-                                                                label="DATE"
-                                                                type="date"
-                                                                value={expenseForm.date}
-                                                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setExpenseForm(prev => ({ ...prev, date: e.target.value }))}
-                                                            />
-                                                            <div>
-                                                                <label className="block text-xs text-text-muted mb-1.5">CATEGORY</label>
-                                                                <select
-                                                                    className="w-full px-3 py-2 rounded-lg bg-background-elevated border border-border text-text-primary"
-                                                                    value={expenseForm.category}
-                                                                    onChange={(e) => setExpenseForm(prev => ({ ...prev, category: e.target.value }))}
-                                                                >
-                                                                    <option value="management_fees">Management Fees</option>
-                                                                    <option value="council_rates">Council Rates</option>
-                                                                    <option value="water_rates">Water Rates</option>
-                                                                    <option value="strata_fees">Strata / Body Corp</option>
-                                                                    <option value="insurance">Insurance</option>
-                                                                    <option value="interest">Loan Interest</option>
-                                                                    <option value="land_tax">Land Tax</option>
-                                                                    <option value="sundry">Sundry / Other</option>
-                                                                </select>
-                                                            </div>
-                                                            <Input
-                                                                label="DESCRIPTION"
-                                                                placeholder="Description"
-                                                                value={expenseForm.description}
-                                                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setExpenseForm(prev => ({ ...prev, description: e.target.value }))}
-                                                            />
-                                                            <Input
-                                                                label="AMOUNT"
-                                                                type="number"
-                                                                placeholder="0.00"
-                                                                leftIcon={<span className="text-text-muted">$</span>}
-                                                                value={expenseForm.amount}
-                                                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setExpenseForm(prev => ({ ...prev, amount: e.target.value }))}
-                                                            />
-                                                        </div>
-                                                        <div className="flex justify-end gap-2">
-                                                            <Button variant="secondary" size="sm" onClick={() => setShowAddExpense(false)}>Cancel</Button>
-                                                            <Button size="sm" onClick={handleAddExpense}>Save Expense</Button>
-                                                        </div>
-                                                    </div>
-                                                )}
+
 
                                                 <div className="border border-border rounded-lg overflow-hidden mb-4">
                                                     <table className="w-full">
@@ -1161,6 +1396,7 @@ export function PropertyPortfolio() {
                                                                 <th className="px-4 py-3">Category</th>
                                                                 <th className="px-4 py-3">Description</th>
                                                                 <th className="px-4 py-3 text-right">Amount</th>
+                                                                <th className="w-10"></th>
                                                             </tr>
                                                         </thead>
                                                         <tbody>
@@ -1170,9 +1406,32 @@ export function PropertyPortfolio() {
                                                                         {new Date(expense.date).toLocaleDateString('en-AU')}
                                                                     </td>
                                                                     <td className="px-4 py-3 capitalize">{expense.category.replace('_', ' ')}</td>
-                                                                    <td className="px-4 py-3 text-text-primary">{expense.description}</td>
+                                                                    <td className="px-4 py-3 text-text-primary">
+                                                                        <div>{expense.description}</div>
+                                                                        {expense.recurrenceFrequency && (
+                                                                            <div className="text-xs text-text-muted mt-0.5">
+                                                                                ${expense.recurrenceAmount} / {expense.recurrenceFrequency} × {expense.recurrenceCount}
+                                                                            </div>
+                                                                        )}
+                                                                    </td>
                                                                     <td className="px-4 py-3 text-right font-medium">
                                                                         ${parseFloat(expense.amount).toLocaleString('en-AU', { minimumFractionDigits: 2 })}
+                                                                    </td>
+                                                                    <td className="px-4 py-3 text-right">
+                                                                        <button
+                                                                            onClick={() => handleEditExpense(expense)}
+                                                                            className="p-1 mr-1 text-text-muted hover:text-primary hover:bg-primary/10 rounded transition-colors"
+                                                                            title="Edit Expense"
+                                                                        >
+                                                                            <Pencil className="w-4 h-4" />
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => expense.id && handleDeleteExpense(expense.id)}
+                                                                            className="p-1 text-text-muted hover:text-danger hover:bg-danger/10 rounded transition-colors"
+                                                                            title="Delete Expense"
+                                                                        >
+                                                                            <Trash2 className="w-4 h-4" />
+                                                                        </button>
                                                                     </td>
                                                                 </tr>
                                                             ))}
@@ -1183,7 +1442,7 @@ export function PropertyPortfolio() {
                                                     <span className="text-text-secondary">
                                                         Total Expenses: <span className="font-bold text-warning">${totalExpenses.toLocaleString('en-AU', { minimumFractionDigits: 2 })}</span>
                                                     </span>
-                                                    <Button variant="secondary">
+                                                    <Button variant="secondary" onClick={() => setShowAddExpense(true)}>
                                                         <Plus className="w-4 h-4" />
                                                         Add Expense
                                                     </Button>
@@ -1376,13 +1635,93 @@ export function PropertyPortfolio() {
                                                 </tbody>
                                             </table>
                                         </div>
+
+                                        {/* Property Sale Section */}
+                                        <div className="mt-8 pt-6 border-t border-border">
+                                            <h3 className="text-lg font-semibold text-text-primary mb-1">Property Sale / Disposal</h3>
+                                            <p className="text-sm text-text-muted mb-4">
+                                                Record the sale of this property. This will be used for Capital Gains Tax calculations.
+                                            </p>
+
+                                            <div className="bg-background-elevated rounded-lg p-4 border border-border">
+                                                <div className="grid grid-cols-2 gap-4 mb-4">
+                                                    <div>
+                                                        <label className="block text-xs text-text-muted uppercase mb-1.5">SALE DATE</label>
+                                                        <input
+                                                            type="date"
+                                                            value={selectedProperty?.saleDate
+                                                                ? new Date(selectedProperty.saleDate).toISOString().split('T')[0]
+                                                                : saleForm.date}
+                                                            onChange={(e) => setSaleForm(prev => ({ ...prev, date: e.target.value }))}
+                                                            disabled={selectedProperty?.status === 'sold'}
+                                                            className="w-full px-3 py-2 rounded-lg bg-background-card border border-border text-text-primary disabled:opacity-50"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs text-text-muted uppercase mb-1.5">SALE PRICE</label>
+                                                        <div className="relative">
+                                                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted">$</span>
+                                                            <input
+                                                                type="number"
+                                                                placeholder="0.00"
+                                                                value={selectedProperty?.salePrice || saleForm.price}
+                                                                onChange={(e) => setSaleForm(prev => ({ ...prev, price: e.target.value }))}
+                                                                disabled={selectedProperty?.status === 'sold'}
+                                                                className="w-full pl-7 pr-3 py-2 rounded-lg bg-background-card border border-border text-text-primary disabled:opacity-50"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {selectedProperty?.status !== 'sold' ? (
+                                                    <div className="flex justify-end">
+                                                        <Button
+                                                            variant="secondary"
+                                                            onClick={handleMarkSold}
+                                                            disabled={!saleForm.date || !saleForm.price}
+                                                            className="text-warning hover:bg-warning/10"
+                                                        >
+                                                            <DollarSign className="w-4 h-4" />
+                                                            Mark as Sold
+                                                        </Button>
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex items-center gap-2 text-warning bg-warning/10 p-3 rounded justify-center">
+                                                        <DollarSign className="w-4 h-4" />
+                                                        <span className="text-sm font-medium">Property marked as SOLD</span>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            onClick={handleUndoSale}
+                                                            className="ml-2 text-warning underline hover:no-underline"
+                                                        >
+                                                            Undo
+                                                        </Button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
                                     </Card>
                                 )}
 
                                 {activeTab === 'depreciation' && selectedProperty && (
                                     <PropertyDepreciationHelper
+                                        key={selectedProperty.id}
                                         property={selectedProperty}
                                         onClose={() => setActiveTab('income')}
+                                        onUpdate={async (updates) => {
+                                            if (!selectedProperty?.id) return;
+                                            await db.properties.update(selectedProperty.id, {
+                                                ...updates,
+                                                updatedAt: new Date(),
+                                            });
+                                            // Update local state to keep UI in sync
+                                            const updated = await db.properties.get(selectedProperty.id);
+                                            if (updated) {
+                                                setSelectedProperty(updated);
+                                                setProperties(prev => prev.map(p => p.id === updated.id ? updated : p));
+                                            }
+                                        }}
                                     />
                                 )}
 
@@ -1572,6 +1911,6 @@ export function PropertyPortfolio() {
                 onConfirm={confirmDeleteProperty}
                 onCancel={() => setDeleteConfirm({ isOpen: false, id: null, address: '' })}
             />
-        </DashboardLayout>
+        </DashboardLayout >
     );
 }

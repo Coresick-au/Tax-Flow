@@ -2,17 +2,18 @@ import { useState } from 'react';
 import { X, HelpCircle } from 'lucide-react';
 import { Button, Input } from '../ui';
 import { db } from '../../database/db';
-import { useTaxFlowStore } from '../../stores/taxFlowStore';
 import type { DepreciableAsset } from '../../types';
 
 interface AssetModalProps {
     isOpen: boolean;
     onClose: () => void;
     onSave: () => void;
+    currentFinancialYear: string;
+    currentProfileId: string | null;
 }
 
-export function AssetModal({ isOpen, onClose, onSave }: AssetModalProps) {
-    const { currentFinancialYear, refreshDashboard } = useTaxFlowStore();
+export function AssetModal({ isOpen, onClose, onSave, currentFinancialYear, currentProfileId }: AssetModalProps) {
+    // const { currentFinancialYear, refreshDashboard } = useTaxFlowStore();
 
     const [formData, setFormData] = useState({
         itemName: '',
@@ -28,6 +29,7 @@ export function AssetModal({ isOpen, onClose, onSave }: AssetModalProps) {
 
         try {
             const assetData: Omit<DepreciableAsset, 'id'> = {
+                profileId: currentProfileId || undefined,
                 financialYear: currentFinancialYear,
                 itemName: formData.itemName,
                 purchaseDate: new Date(formData.purchaseDate),
@@ -39,7 +41,7 @@ export function AssetModal({ isOpen, onClose, onSave }: AssetModalProps) {
             };
 
             await db.depreciableAssets.add(assetData);
-            await refreshDashboard();
+            // await refreshDashboard();
             onSave();
             onClose();
 

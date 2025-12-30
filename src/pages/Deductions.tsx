@@ -6,7 +6,7 @@ import { Card, CardHeader, Button, StatCard } from '../components/ui';
 import { WfhCalculator } from '../components/WfhCalculator';
 import { DepreciationHelper } from '../components/helpers/DepreciationHelper';
 import { db } from '../database/db';
-import { DeductionModal } from '../components/modals/DeductionModal';
+import { TaxDeductionModal } from '../components/modals/TaxDeductionModal';
 import { AssetModal } from '../components/modals/AssetModal';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { Plus, DollarSign, Sparkles, Trash2, Home, Calculator, Briefcase, FileText } from 'lucide-react';
@@ -25,6 +25,7 @@ export function Deductions() {
         totalDeductions,
         deductionCount,
         refreshDashboard,
+        currentProfileId,
     } = useTaxFlowStore();
 
     const [activeTab, setActiveTab] = useState<DeductionTab>('wfh');
@@ -51,6 +52,7 @@ export function Deductions() {
             const existing = await db.workDeductions
                 .where('financialYear')
                 .equals(currentFinancialYear)
+                .filter(w => w.profileId === currentProfileId)
                 .first();
 
             if (existing) {
@@ -76,6 +78,7 @@ export function Deductions() {
         const assetList = await db.depreciableAssets
             .where('financialYear')
             .equals(currentFinancialYear)
+            .filter(a => a.profileId === currentProfileId)
             .toArray();
         setAssets(assetList);
     };
@@ -104,9 +107,11 @@ export function Deductions() {
         const existing = await db.workDeductions
             .where('financialYear')
             .equals(currentFinancialYear)
+            .filter(w => w.profileId === currentProfileId)
             .first();
 
         const workDeductionData = {
+            profileId: currentProfileId || undefined,
             financialYear: currentFinancialYear,
             wfhMethod: result.method,
             totalHoursWorked: result.totalHours,
@@ -327,16 +332,23 @@ export function Deductions() {
             </div>
 
 
-            <DeductionModal
+            <TaxDeductionModal
                 isOpen={showDeductionModal}
                 onClose={() => setShowDeductionModal(false)}
                 onSave={() => refreshDashboard()}
+                currentFinancialYear={currentFinancialYear}
+                currentProfileId={currentProfileId}
             />
 
             <AssetModal
                 isOpen={showAssetModal}
                 onClose={() => setShowAssetModal(false)}
-                onSave={() => refreshDashboard()}
+                onSave={() => {
+                    loadAssets();
+                    refreshDashboard();
+                }}
+                currentFinancialYear={currentFinancialYear}
+                currentProfileId={currentProfileId}
             />
             <ConfirmDialog
                 isOpen={deleteAssetConfirm.isOpen}

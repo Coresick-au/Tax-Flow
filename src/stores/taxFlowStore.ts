@@ -78,6 +78,28 @@ function getAvailableFinancialYears(): string[] {
     ];
 }
 
+// Helper to check if property was owned during a specific FY
+function isPropertyActiveInFY(property: { purchaseDate: Date; saleDate?: Date }, fy: string): boolean {
+    const [startYearStr] = fy.split('-');
+    const startYear = parseInt(startYearStr, 10);
+
+    const fyStart = new Date(startYear, 6, 1);       // July 1st of start year
+    const fyEnd = new Date(startYear + 1, 5, 30);    // June 30th of end year
+
+    const purchaseDate = new Date(property.purchaseDate);
+    // If purchased after this FY ended, it doesn't count
+    if (purchaseDate > fyEnd) return false;
+
+    // If sold, check if it was sold before this FY started
+    if (property.saleDate) {
+        const saleDate = new Date(property.saleDate);
+        if (saleDate < fyStart) return false;
+    }
+
+    // Otherwise, it was held for at least one day in the FY
+    return true;
+}
+
 export const useTaxFlowStore = create<TaxFlowState>((set, get) => ({
     // Initial state
     isInitialized: false,
@@ -110,7 +132,33 @@ export const useTaxFlowStore = create<TaxFlowState>((set, get) => ({
             const taxSettings = await getOrCreateTaxSettings(get().currentFinancialYear);
 
             // Load all profiles
-            const profiles = await db.userProfile.toArray();
+            let profiles = await db.userProfile.toArray();
+
+            // If no profiles exist, check if we have legacy data
+            if (profiles.length === 0) {
+                const hasData = (await db.properties.count()) > 0 ||
+                    (await db.income.count()) > 0 ||
+                    (await db.receipts.count()) > 0;
+
+                if (hasData) {
+                    // Create a default profile for legacy data
+                    const defaultProfile: UserProfile = {
+                        profileId: crypto.randomUUID(),
+                        name: 'Main Account',
+                        occupation: 'User',
+                        financialYear: get().currentFinancialYear,
+                        taxResidency: 'resident',
+                        createdAt: new Date(),
+                        updatedAt: new Date(),
+                    };
+                    await db.userProfile.add(defaultProfile);
+                    profiles = [defaultProfile];
+
+                    // Optional: We could migrate all existing data here, 
+                    // but lenient filtering handles it for now.
+                }
+            }
+
             const uniqueProfiles = profiles.reduce((acc, profile) => {
                 if (!acc.find(p => p.profileId === profile.profileId)) {
                     acc.push(profile);
@@ -126,7 +174,14 @@ export const useTaxFlowStore = create<TaxFlowState>((set, get) => ({
                 currentProfileId = uniqueProfiles[0].profileId;
                 userProfile = uniqueProfiles[0];
             } else if (currentProfileId) {
-                userProfile = uniqueProfiles.find(p => p.profileId === currentProfileId) || null;
+                const found = uniqueProfiles.find(p => p.profileId === currentProfileId);
+                if (found) {
+                    userProfile = found;
+                } else if (uniqueProfiles.length > 0) {
+                    // Current ID invalid/deleted, fallback to first
+                    currentProfileId = uniqueProfiles[0].profileId;
+                    userProfile = uniqueProfiles[0];
+                }
             }
 
             set({
@@ -205,16 +260,18 @@ export const useTaxFlowStore = create<TaxFlowState>((set, get) => ({
 
     // Calculate tax position
     calculateTaxPosition: async () => {
-        const { currentFinancialYear, taxSettings } = get();
+        const { currentFinancialYear, taxSettings, currentProfileId } = get();
 
         if (!taxSettings) return;
 
         try {
-            // Fetch properties to get ownership percentages
-            const properties = await db.properties
-                .where('financialYear')
-                .equals(currentFinancialYear)
-                .toArray();
+            // Fetch properties for current profile and filter for those active in current FY
+            // Note: In transition, allow properties with no profileId
+            const allPropertiesRaw = await db.properties.toArray();
+            const properties = allPropertiesRaw.filter(p =>
+                (!p.profileId || p.profileId === currentProfileId) &&
+                isPropertyActiveInFY(p, currentFinancialYear)
+            );
 
             // Create a map of propertyId -> ownership percentage
             const ownershipMap = new Map<number, number>();
@@ -229,11 +286,25 @@ export const useTaxFlowStore = create<TaxFlowState>((set, get) => ({
             const propertyIncomes = await db.propertyIncome
                 .where('financialYear')
                 .equals(currentFinancialYear)
+                .filter(i => !i.profileId || i.profileId === currentProfileId)
                 .toArray();
+
+            // Filter by profile? Properties are generally shared, but income might need to be specific?
+            // For now, let's assume property income is tied to property ownership which is handled by ownershipMap
+            // If we need strict profile isolation for property income entries themselves, we'd need to add profileId to PropertyIncome table.
+            // Based on current db schema, PropertyIncome doesn't have profileId yet (it seems), or it does?
+            // Checking db.ts... version 3 added profileId to income and receipts. 
+            // PropertyIncome might not have it. Let's check the schema again.
+            // Schema: propertyIncome: '++id, propertyId, financialYear' -> No profileId.
+            // So property income is global for the property.
+            // Ownership map handles the split.
+
 
             let totalIncome = new Decimal(0);
             for (const income of propertyIncomes) {
-                const ownershipFraction = ownershipMap.get(income.propertyId) ?? 1;
+                // IMPORTANT: Default to 0 if property not found (e.g. deleted but income record remains)
+                // This prevents ghost income from showing up on the dashboard.
+                const ownershipFraction = ownershipMap.get(income.propertyId) ?? 0;
                 const propertyTotal = new Decimal(income.grossRent || '0')
                     .add(income.insurancePayouts || '0')
                     .add(income.otherIncome || '0');
@@ -241,73 +312,87 @@ export const useTaxFlowStore = create<TaxFlowState>((set, get) => ({
             }
 
             // Sum general income (salary, dividends, etc)
-            const generalIncomes = await db.income
+            const allIncome = await db.income
                 .where('financialYear')
                 .equals(currentFinancialYear)
+                .filter(record => !record.profileId || record.profileId === currentProfileId)
                 .toArray();
 
-            for (const item of generalIncomes) {
+            for (const item of allIncome) {
                 totalIncome = totalIncome.add(item.amount || '0');
             }
 
             // Add Crypto Gains to Income
-            const cryptoTx = await db.cryptoTransactions
+            const cryptoTransactions = await db.cryptoTransactions
                 .where('financialYear')
                 .equals(currentFinancialYear)
+                .filter(tx => !tx.profileId || tx.profileId === currentProfileId)
                 .toArray();
 
-            const cryptoGain = calculateCapitalGains(cryptoTx);
+            const cryptoGain = calculateCapitalGains(cryptoTransactions);
             totalIncome = totalIncome.add(cryptoGain);
+
+
+            // Checking db.ts: cryptoTransactions: '++id, financialYear, date, assetName, type' -> No profileId.
+            // Assuming crypto is shared or not yet multi-user enabled. 
+            // We will leave it as is for now, or filter if we added it (we haven't in db.ts viewing).
 
 
             // Sum all deductions
             const propertyExpenses = await db.propertyExpenses
                 .where('financialYear')
                 .equals(currentFinancialYear)
-                .filter(e => !e.isCapitalImprovement)
+                .filter(e => !e.isCapitalImprovement && (!e.profileId || e.profileId === currentProfileId))
                 .toArray();
 
             const receipts = await db.receipts
                 .where('financialYear')
                 .equals(currentFinancialYear)
+                .filter(r => !r.profileId || r.profileId === currentProfileId)
                 .toArray();
 
             // Fetch WFH deductions
-            const wfhRecord = await db.workDeductions
+            const workDeductions = await db.workDeductions
                 .where('financialYear')
                 .equals(currentFinancialYear)
-                .first();
+                .filter(d => !d.profileId || d.profileId === currentProfileId)
+                .toArray();
 
             // Fetch Depreciable Assets
-            const assets = await db.depreciableAssets
+            const depreciableAssets = await db.depreciableAssets
                 .where('financialYear')
                 .equals(currentFinancialYear)
+                .filter(a => !a.profileId || a.profileId === currentProfileId)
                 .toArray();
 
             let totalDeductions = new Decimal(0);
             for (const expense of propertyExpenses) {
-                const ownershipFraction = ownershipMap.get(expense.propertyId) ?? 1;
+                const ownershipFraction = ownershipMap.get(expense.propertyId) ?? 0;
                 totalDeductions = totalDeductions.add(new Decimal(expense.amount || '0').mul(ownershipFraction));
             }
             for (const receipt of receipts) {
                 totalDeductions = totalDeductions.add(receipt.amount || '0');
             }
 
-            // Add WFH deduction
+            // Calculate WFH deduction
+            const wfhRecord = workDeductions[0]; // Just take first for now
             if (wfhRecord) {
-                totalDeductions = totalDeductions.add(calculateWorkDeduction(wfhRecord));
+                const wfhDeduction = calculateWorkDeduction(wfhRecord);
+                totalDeductions = totalDeductions.add(wfhDeduction);
             }
 
-            // Add Depreciation
+            // Calculate Asset Depreciation
             // Determine FY end date
-            const endYear = parseInt(currentFinancialYear.split('-')[1]);
+            const endYearStr = currentFinancialYear.split('-')[1];
+            const endYear = parseInt(endYearStr);
             const fyEnd = new Date(endYear, 5, 30); // June 30
 
-            for (const asset of assets) {
-                totalDeductions = totalDeductions.add(calculateDepreciation(asset, fyEnd));
+            for (const asset of depreciableAssets) {
+                const depreciation = calculateDepreciation(asset, fyEnd);
+                totalDeductions = totalDeductions.add(depreciation);
             }
 
-            const deductionCount = propertyExpenses.length + receipts.length + (wfhRecord ? 1 : 0) + assets.length;
+            const deductionCount = propertyExpenses.length + receipts.length + (wfhRecord ? 1 : 0) + depreciableAssets.length;
 
             // Calculate taxable income
             const taxableIncome = Decimal.max(totalIncome.sub(totalDeductions), new Decimal(0));
@@ -342,13 +427,14 @@ export const useTaxFlowStore = create<TaxFlowState>((set, get) => ({
 
     // Calculate safety check against ATO averages
     calculateSafetyCheck: async () => {
-        const { currentFinancialYear, userProfile } = get();
+        const { currentFinancialYear, userProfile, currentProfileId } = get();
 
         try {
             // Get all receipts and categorize by type
             const receipts = await db.receipts
                 .where('financialYear')
                 .equals(currentFinancialYear)
+                .filter(r => !r.profileId || r.profileId === currentProfileId)
                 .toArray();
 
             // Aggregate deductions by category
@@ -380,13 +466,14 @@ export const useTaxFlowStore = create<TaxFlowState>((set, get) => ({
 
     // Refresh dashboard data
     refreshDashboard: async () => {
-        const { currentFinancialYear } = get();
+        const { currentFinancialYear, currentProfileId } = get();
 
         try {
             // Get recent activity (last 10 items)
             const recentReceipts = await db.receipts
                 .where('financialYear')
                 .equals(currentFinancialYear)
+                .filter(r => r.profileId === currentProfileId)
                 .reverse()
                 .limit(10)
                 .toArray();

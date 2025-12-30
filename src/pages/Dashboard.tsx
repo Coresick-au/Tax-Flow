@@ -11,7 +11,9 @@ import {
 import { useTaxFlowStore } from '../stores/taxFlowStore';
 import { DashboardLayout } from '../components/layout';
 import { StatCard, Card, CardHeader, Button } from '../components/ui';
-import { DeductionModal } from '../components/modals/DeductionModal';
+import { TaxDeductionModal } from '../components/modals/TaxDeductionModal';
+import { TaxableIncomeModal, TaxLiabilityModal, TotalDeductionsModal } from '../components/modals/DashboardModals';
+import { FinancialTrendChart } from '../components/dashboard/FinancialTrendChart';
 
 function getTypeColor(type: string): string {
     switch (type) {
@@ -103,6 +105,8 @@ export function Dashboard() {
         recentActivity,
         refreshDashboard,
     } = useTaxFlowStore();
+
+    const [activeModal, setActiveModal] = useState<'income' | 'liability' | 'deductions' | null>(null);
 
     // Quick action handlers
     const handleSnapReceipt = () => {
@@ -215,6 +219,7 @@ export function Dashboard() {
                     subtitle={`On track for $${(estimatedTaxableIncome.toNumber() * 1.2).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',')} projection`}
                     icon={<TrendingUp className="w-5 h-5 text-accent" />}
                     iconBgColor="bg-accent/20"
+                    onClick={() => setActiveModal('income')}
                 />
                 <StatCard
                     title="Current Tax Liability"
@@ -223,6 +228,7 @@ export function Dashboard() {
                     subtitle="Based on resident tax rates"
                     icon={<AlertTriangle className="w-5 h-5 text-warning" />}
                     iconBgColor="bg-warning/20"
+                    onClick={() => setActiveModal('liability')}
                 />
                 <StatCard
                     title="Total Deductions"
@@ -230,6 +236,7 @@ export function Dashboard() {
                     subtitle={`Last claim: Officeworks ($120)`}
                     icon={<FileText className="w-5 h-5 text-primary" />}
                     iconBgColor="bg-primary/20"
+                    onClick={() => setActiveModal('deductions')}
                 />
             </div>
 
@@ -253,12 +260,8 @@ export function Dashboard() {
                             </div>
                         }
                     />
-                    <div className="h-64 flex items-center justify-center">
-                        <div className="text-center text-text-muted">
-                            <TrendingUp className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                            <p className="text-sm">Add income and expenses to see your financial trends</p>
-                            <p className="text-xs mt-1">Data will appear as you track your finances</p>
-                        </div>
+                    <div className="h-64">
+                        <FinancialTrendChart />
                     </div>
                 </Card>
 
@@ -398,15 +401,30 @@ export function Dashboard() {
 
             {/* Deduction Modal */}
             {isDeductionModalOpen && (
-                <DeductionModal
+                <TaxDeductionModal
                     isOpen={isDeductionModalOpen}
                     onClose={() => setIsDeductionModalOpen(false)}
+                    currentFinancialYear={currentFinancialYear}
+                    currentProfileId={userProfile?.profileId || null}
                     onSave={() => {
                         setIsDeductionModalOpen(false);
                         refreshDashboard();
                     }}
                 />
             )}
+
+            <TaxableIncomeModal
+                isOpen={activeModal === 'income'}
+                onClose={() => setActiveModal(null)}
+            />
+            <TaxLiabilityModal
+                isOpen={activeModal === 'liability'}
+                onClose={() => setActiveModal(null)}
+            />
+            <TotalDeductionsModal
+                isOpen={activeModal === 'deductions'}
+                onClose={() => setActiveModal(null)}
+            />
         </DashboardLayout>
     );
 }

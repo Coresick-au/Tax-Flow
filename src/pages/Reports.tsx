@@ -5,7 +5,7 @@ import { Card, CardHeader, Button } from '../components/ui';
 import { Download, AlertTriangle, CheckCircle, Info, ChevronDown, ChevronRight } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import { db } from '../database/db';
-import type { IncomeRecord, Receipt, DepreciableAsset, Property, PropertyExpense, WorkDeductions } from '../types';
+import type { IncomeRecord, Receipt, DepreciableAsset, Property, PropertyExpense, WorkDeductions, AccountantNote } from '../types';
 import Decimal from 'decimal.js';
 
 interface ReportData {
@@ -15,6 +15,7 @@ interface ReportData {
     properties: Property[];
     propertyExpenses: PropertyExpense[];
     workDeductions: WorkDeductions | null;
+    accountantNotes: AccountantNote[];
 }
 
 export function Reports() {
@@ -37,7 +38,9 @@ export function Reports() {
         properties: [],
         propertyExpenses: [],
         workDeductions: null,
+        accountantNotes: [],
     });
+    const [includeAccountantNotes, setIncludeAccountantNotes] = useState(true);
 
     const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
         income: true,
@@ -45,6 +48,7 @@ export function Reports() {
         assets: false,
         wfh: false,
         property: false,
+        notes: false,
     });
 
     useEffect(() => {
@@ -86,13 +90,23 @@ export function Reports() {
                 .equals(currentFinancialYear)
                 .first();
 
+            const notes = await db.accountantNotes
+                .where('financialYear')
+                .equals(currentFinancialYear)
+                .toArray();
+
             setReportData({
-                incomeRecords: incomeRecords.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
-                receipts: receipts.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
-                assets,
-                properties,
-                propertyExpenses,
+                incomeRecords: incomeRecords
+                    .filter(r => r.profileId === currentProfileId)
+                    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+                receipts: receipts
+                    .filter(r => r.profileId === currentProfileId)
+                    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+                assets: assets,
+                properties: properties, // Properties are global in v6
+                propertyExpenses: propertyExpenses,
                 workDeductions: workDeductions || null,
+                accountantNotes: notes.filter(n => !n.profileId || n.profileId === currentProfileId),
             });
         }
 
@@ -132,7 +146,7 @@ export function Reports() {
     const formatCategory = (cat: string) => cat.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 
     const handleExportPDF = () => {
-        const { incomeRecords, receipts, assets, workDeductions } = reportData;
+        const { incomeRecords, receipts, assets, workDeductions, accountantNotes } = reportData;
 
         const printContent = `
             <html>
@@ -332,6 +346,24 @@ export function Reports() {
                 </div>
 
                 </div>
+
+                ${includeAccountantNotes && accountantNotes.length > 0 ? `
+                <!-- ACCOUNTANT NOTES -->
+                <div class="section" style="page-break-before: always;">
+                    <h2>6. Accountant Notes</h2>
+                    <p style="color: #6b7280; font-style: italic; margin-bottom: 15px;">Included for discussion with your registered tax agent.</p>
+                    ${accountantNotes.map(n => `
+                        <div style="margin-bottom: 20px; padding: 15px; background: #f9fafb; border-left: 4px solid ${n.priority === 'high' ? '#ef4444' : n.priority === 'medium' ? '#f59e0b' : '#3b82f6'}; border-radius: 4px;">
+                            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 5px;">
+                                <strong style="font-size: 14px;">${n.title}</strong>
+                                <span style="font-size: 10px; padding: 2px 6px; border-radius: 10px; background: #fee2e2; color: #ef4444; text-transform: uppercase;">${n.priority}</span>
+                            </div>
+                            <p style="margin: 5px 0 0 0; line-height: 1.4;">${n.content || 'No details provided.'}</p>
+                            <div style="margin-top: 10px; font-size: 9px; color: #9ca3af;">Status: ${n.isResolved ? 'Resolved' : 'Active'}</div>
+                        </div>
+                    `).join('')}
+                </div>
+                ` : ''}
                 
                 <div class="footer">
                     <p><strong>Disclaimer:</strong> This is an estimate only. Consult a registered tax agent for professional advice.</p>
@@ -369,10 +401,24 @@ export function Reports() {
                     <h1 className="text-2xl font-bold text-text-primary">Financial Reports</h1>
                     <p className="text-text-secondary">Detailed breakdown for FY {currentFinancialYear}</p>
                 </div>
-                <Button variant="secondary" onClick={handleExportPDF}>
-                    <Download className="w-4 h-4 mr-2" />
-                    Export PDF
-                </Button>
+                <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-background-elevated rounded-lg border border-border">
+                        <input
+                            type="checkbox"
+                            id="includeNotes"
+                            checked={includeAccountantNotes}
+                            onChange={(e) => setIncludeAccountantNotes(e.target.checked)}
+                            className="w-4 h-4 rounded border-border text-primary focus:ring-primary"
+                        />
+                        <label htmlFor="includeNotes" className="text-sm font-medium text-text-secondary cursor-pointer">
+                            Include Notes
+                        </label>
+                    </div>
+                    <Button variant="secondary" onClick={handleExportPDF}>
+                        <Download className="w-4 h-4 mr-2" />
+                        Export PDF
+                    </Button>
+                </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
@@ -612,6 +658,34 @@ export function Reports() {
                                             })}
                                         </tbody>
                                     </table>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </Card>
+                {/* Accountant Notes */}
+                <Card>
+                    <SectionHeader title="Accountant Notes" section="notes" count={reportData.accountantNotes.length} />
+                    {expandedSections.notes && (
+                        <div className="border-t border-border p-4">
+                            {reportData.accountantNotes.length === 0 ? (
+                                <p className="text-text-muted text-center">No notes entered for this year</p>
+                            ) : (
+                                <div className="space-y-4">
+                                    {reportData.accountantNotes.map((note, idx) => (
+                                        <div key={idx} className="p-4 rounded-lg bg-background-elevated border border-border">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <h4 className="font-bold text-text-primary">{note.title}</h4>
+                                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${note.priority === 'high' ? 'bg-danger/20 text-danger' :
+                                                    note.priority === 'medium' ? 'bg-warning/20 text-warning' :
+                                                        'bg-info/20 text-info'
+                                                    }`}>
+                                                    {note.priority}
+                                                </span>
+                                            </div>
+                                            <p className="text-sm text-text-secondary">{note.content}</p>
+                                        </div>
+                                    ))}
                                 </div>
                             )}
                         </div>

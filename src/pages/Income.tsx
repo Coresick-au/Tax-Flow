@@ -8,7 +8,7 @@ import type { IncomeRecord, IncomeCategory } from '../types';
 import Decimal from 'decimal.js';
 
 export function Income() {
-    const { currentFinancialYear, refreshDashboard } = useTaxFlowStore();
+    const { currentFinancialYear, refreshDashboard, currentProfileId } = useTaxFlowStore();
     const [incomeRecords, setIncomeRecords] = useState<IncomeRecord[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [showAddForm, setShowAddForm] = useState(false);
@@ -38,8 +38,10 @@ export function Income() {
     });
 
     useEffect(() => {
-        loadIncome();
-    }, [currentFinancialYear]);
+        if (currentProfileId) {
+            loadIncome();
+        }
+    }, [currentFinancialYear, currentProfileId]);
 
     const loadIncome = async () => {
         setIsLoading(true);
@@ -47,6 +49,7 @@ export function Income() {
             const records = await db.income
                 .where('financialYear')
                 .equals(currentFinancialYear)
+                .filter(record => record.profileId === currentProfileId)
                 .reverse()
                 .sortBy('date');
 
@@ -87,10 +90,11 @@ export function Income() {
     };
 
     const handleSave = async () => {
-        if (!formData.amount || !formData.date) return;
+        if (!formData.amount || !formData.date || !currentProfileId) return;
 
         try {
             const record = {
+                profileId: currentProfileId,
                 financialYear: currentFinancialYear,
                 date: new Date(formData.date),
                 category: formData.category,

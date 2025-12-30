@@ -20,6 +20,7 @@ import { useTaxFlowStore } from '../../stores/taxFlowStore';
 import { Button } from '../ui';
 import { ProfileSwitcher } from '../profile/ProfileSwitcher';
 
+// Force HMR update
 interface SidebarProps {
     isCollapsed?: boolean;
     onToggle?: () => void;

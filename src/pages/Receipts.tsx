@@ -30,7 +30,7 @@ const CATEGORY_LABELS: Record<ExpenseCategory, string> = {
 };
 
 export function Receipts() {
-    const { currentFinancialYear, isInitialized, initialize, refreshDashboard } = useTaxFlowStore();
+    const { currentFinancialYear, isInitialized, initialize, refreshDashboard, currentProfileId } = useTaxFlowStore();
     const [receipts, setReceipts] = useState<Receipt[]>([]);
     const [showAddModal, setShowAddModal] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
@@ -63,6 +63,7 @@ export function Receipts() {
                 const recs = await db.receipts
                     .where('financialYear')
                     .equals(currentFinancialYear)
+                    .filter(r => r.profileId === currentProfileId)
                     .toArray();
                 setReceipts(recs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
             } catch (error) {
@@ -70,15 +71,16 @@ export function Receipts() {
             }
         };
         loadReceipts();
-    }, [currentFinancialYear]);
+    }, [currentFinancialYear, currentProfileId]);
 
     // Add or Update receipt
     const handleSaveReceipt = async () => {
-        if (!formData.vendor || !formData.amount) return;
+        if (!formData.vendor || !formData.amount || !currentProfileId) return;
 
         const isGreyArea = GREY_AREA_CATEGORIES.includes(formData.category);
 
         const receiptData: Partial<Receipt> = {
+            profileId: currentProfileId,
             financialYear: currentFinancialYear,
             date: formData.date ? new Date(formData.date) : new Date(),
             vendor: formData.vendor,
@@ -105,6 +107,7 @@ export function Receipts() {
         const recs = await db.receipts
             .where('financialYear')
             .equals(currentFinancialYear)
+            .filter(r => r.profileId === currentProfileId)
             .toArray();
         setReceipts(recs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
 

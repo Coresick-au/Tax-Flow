@@ -12,9 +12,20 @@ interface StatCardProps {
     };
     icon?: ReactNode;
     iconBgColor?: string;
+    onClick?: () => void;
+    className?: string;
 }
 
-export function StatCard({ title, value, subtitle, trend, icon, iconBgColor = 'bg-primary-muted' }: StatCardProps) {
+export function StatCard({
+    title,
+    value,
+    subtitle,
+    trend,
+    icon,
+    iconBgColor = 'bg-primary-muted',
+    onClick,
+    className = ''
+}: StatCardProps) {
     const getTrendIcon = () => {
         if (!trend) return null;
 
@@ -34,7 +45,13 @@ export function StatCard({ title, value, subtitle, trend, icon, iconBgColor = 'b
     };
 
     return (
-        <Card>
+        <Card
+            className={`
+                ${className} 
+                ${onClick ? 'cursor-pointer transition-colors hover:bg-background-elevated/80 active:bg-background-elevated' : ''}
+            `}
+            onClick={onClick}
+        >
             <div className="flex items-start justify-between">
                 <div className="flex-1">
                     <p className="text-sm text-text-secondary font-medium">{title}</p>

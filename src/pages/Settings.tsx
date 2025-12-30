@@ -211,6 +211,11 @@ export function Settings() {
                                         <Check className="w-4 h-4" />
                                         Restored!
                                     </>
+                                ) : importStatus === 'error' ? (
+                                    <>
+                                        <AlertTriangle className="w-4 h-4" />
+                                        Import Failed
+                                    </>
                                 ) : (
                                     <>
                                         <Upload className="w-4 h-4" />

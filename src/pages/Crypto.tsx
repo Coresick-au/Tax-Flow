@@ -12,7 +12,7 @@ import type { CryptoTransaction } from '../types';
 import { calculateCapitalGains } from '../utils/capitalGainsCalculator';
 
 export function Crypto() {
-    const { currentFinancialYear, isInitialized, initialize } = useTaxFlowStore();
+    const { currentFinancialYear, currentProfileId, isInitialized, initialize, refreshDashboard } = useTaxFlowStore();
     const [transactions, setTransactions] = useState<CryptoTransaction[]>([]);
     const [showAddForm, setShowAddForm] = useState(false);
     const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; id: number | null; asset: string }>({
@@ -42,6 +42,7 @@ export function Crypto() {
                 const txs = await db.cryptoTransactions
                     .where('financialYear')
                     .equals(currentFinancialYear)
+                    .filter(tx => tx.profileId === currentProfileId)
                     .toArray();
                 setTransactions(txs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
             } catch (error) {
@@ -77,6 +78,7 @@ export function Crypto() {
         if (deleteConfirm.id) {
             await db.cryptoTransactions.delete(deleteConfirm.id);
             setTransactions(prev => prev.filter(t => t.id !== deleteConfirm.id));
+            refreshDashboard();
         }
         setDeleteConfirm({ isOpen: false, id: null, asset: '' });
     };
@@ -86,6 +88,7 @@ export function Crypto() {
         if (!formData.assetName || !formData.price || !formData.quantity) return;
 
         const newTransaction: Omit<CryptoTransaction, 'id'> = {
+            profileId: currentProfileId || undefined,
             financialYear: currentFinancialYear,
             type: formData.type,
             assetName: formData.assetName.toUpperCase(),
@@ -99,11 +102,13 @@ export function Crypto() {
         };
 
         await db.cryptoTransactions.add(newTransaction);
+        refreshDashboard();
 
         // Reload transactions
         const txs = await db.cryptoTransactions
             .where('financialYear')
             .equals(currentFinancialYear)
+            .filter(tx => tx.profileId === currentProfileId)
             .toArray();
         setTransactions(txs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
 

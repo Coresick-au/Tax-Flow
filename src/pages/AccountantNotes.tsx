@@ -14,7 +14,7 @@ import { db } from '../database/db';
 import type { AccountantNote } from '../types';
 
 export function AccountantNotes() {
-    const { currentFinancialYear, isInitialized, initialize } = useTaxFlowStore();
+    const { currentFinancialYear, currentProfileId, isInitialized, initialize } = useTaxFlowStore();
     const [notes, setNotes] = useState<AccountantNote[]>([]);
     const [showAddForm, setShowAddForm] = useState(false);
     const [editingId, setEditingId] = useState<number | null>(null);
@@ -40,8 +40,10 @@ export function AccountantNotes() {
             .equals(currentFinancialYear)
             .toArray();
 
+        const filtered = allNotes.filter(n => !n.profileId || n.profileId === currentProfileId);
+
         // Sort by priority (high first) then by date (newest first)
-        allNotes.sort((a, b) => {
+        filtered.sort((a, b) => {
             const priorityOrder = { high: 0, medium: 1, low: 2 };
             if (priorityOrder[a.priority] !== priorityOrder[b.priority]) {
                 return priorityOrder[a.priority] - priorityOrder[b.priority];
@@ -49,7 +51,7 @@ export function AccountantNotes() {
             return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
         });
 
-        setNotes(allNotes);
+        setNotes(filtered);
     };
 
     useEffect(() => {
@@ -63,6 +65,7 @@ export function AccountantNotes() {
         if (!formData.title.trim()) return;
 
         const newNote: AccountantNote = {
+            profileId: currentProfileId || undefined,
             financialYear: currentFinancialYear,
             title: formData.title,
             content: formData.content,

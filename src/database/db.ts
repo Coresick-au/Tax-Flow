@@ -66,6 +66,28 @@ export class TaxFlowDatabase extends Dexie {
         this.version(5).stores({
             accountantNotes: '++id, profileId, financialYear, priority, isResolved'
         });
+
+        // Version 6: Properties are now global (no financialYear), indexed by status/purchaseDate
+        this.version(6).stores({
+            properties: '++id, address, status, purchaseDate'
+        });
+
+        // Version 7: Full profile isolation for all financial tables
+        this.version(7).stores({
+            userProfile: '++id, profileId, financialYear, taxResidency',
+            properties: '++id, profileId, address, status, purchaseDate',
+            propertyIncome: '++id, profileId, propertyId, financialYear',
+            propertyExpenses: '++id, profileId, propertyId, financialYear, category, date',
+            propertyLoans: '++id, profileId, propertyId, financialYear, lender',
+            workDeductions: '++id, profileId, financialYear',
+            depreciableAssets: '++id, profileId, financialYear, itemName',
+            cryptoTransactions: '++id, profileId, financialYear, date, assetName, type',
+            receipts: '++id, profileId, financialYear, date, category, amount',
+            taxSettings: '++id, financialYear',
+            settings: '++id, key',
+            income: '++id, profileId, financialYear, date, category',
+            accountantNotes: '++id, profileId, financialYear, priority, isResolved'
+        });
     }
 }
 
@@ -92,14 +114,46 @@ export async function exportDatabase(): Promise<string> {
 }
 
 export async function importDatabase(jsonData: string): Promise<void> {
-    const data = JSON.parse(jsonData) as Record<string, unknown[]>;
+    try {
+        const data = JSON.parse(jsonData) as Record<string, any[]>;
 
-    await db.transaction('rw', db.tables, async () => {
-        for (const table of db.tables) {
-            if (data[table.name]) {
-                await table.clear();
-                await table.bulkAdd(data[table.name] as object[]);
-            }
+        // Find a default profile ID from the imported data to assign to legacy records
+        let defaultProfileId: string | undefined;
+        if (data.userProfile && data.userProfile.length > 0) {
+            defaultProfileId = data.userProfile[0].profileId;
         }
-    });
+
+        await db.transaction('rw', db.tables, async () => {
+            // First clear all tables
+            for (const table of db.tables) {
+                await table.clear();
+            }
+
+            // Then import data
+            for (const table of db.tables) {
+                if (data[table.name]) {
+                    const records = data[table.name];
+
+                    // If we have a default profile, inject it into legacy records that need it
+                    // Skip 'settings' and 'taxSettings' as they might be global or different
+                    if (defaultProfileId &&
+                        table.name !== 'userProfile' &&
+                        table.name !== 'settings' &&
+                        table.name !== 'taxSettings') {
+
+                        records.forEach(record => {
+                            if (record && typeof record === 'object' && !record.profileId) {
+                                record.profileId = defaultProfileId;
+                            }
+                        });
+                    }
+
+                    await table.bulkAdd(records);
+                }
+            }
+        });
+    } catch (error) {
+        console.error("Failed to import database:", error);
+        throw error;
+    }
 }

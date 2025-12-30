@@ -48,9 +48,10 @@ export type IncomeCategory =
 
 // ==================== Property Types ====================
 
+
 export interface Property {
     id?: number;
-    financialYear: FinancialYear;
+    profileId?: string;
     address: string;
     suburb: string;
     state: string;
@@ -61,7 +62,14 @@ export interface Property {
     firstRentedDate?: Date;
     costBase: CostBaseItem[];
     status: 'active' | 'sold' | 'inactive';
+    saleDate?: Date;
+    salePrice?: string;
     imageUrl?: string; // Base64 encoded property image
+    // Depreciation helper data
+    buildingAge?: string;
+    buildingValue?: string;
+    hasDepreciationSchedule?: 'yes' | 'no' | 'unknown';
+    depreciationScheduleDetails?: string;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -80,6 +88,7 @@ export interface CostBaseItem {
 
 export interface PropertyIncome {
     id?: number;
+    profileId?: string;
     propertyId: number;
     financialYear: FinancialYear;
     grossRent: string;
@@ -91,6 +100,7 @@ export interface PropertyIncome {
 
 export interface PropertyExpense {
     id?: number;
+    profileId?: string;
     propertyId: number;
     financialYear: FinancialYear;
     category: PropertyExpenseCategory;
@@ -99,6 +109,10 @@ export interface PropertyExpense {
     isCapitalImprovement: boolean;
     contractor?: string;
     date: Date;
+    // Recurrence details
+    recurrenceAmount?: string; // e.g. "50.00"
+    recurrenceFrequency?: 'weekly' | 'fortnightly' | 'monthly' | 'quarterly' | 'annually';
+    recurrenceCount?: number; // e.g. 12
     createdAt: Date;
 }
 
@@ -124,6 +138,7 @@ export type PropertyExpenseCategory =
 
 export interface PropertyLoan {
     id?: number;
+    profileId?: string;
     propertyId: number;
     financialYear: FinancialYear;
     lender: string;
@@ -142,6 +157,7 @@ export interface PropertyLoan {
 
 export interface WorkDeductions {
     id?: number;
+    profileId?: string;
     financialYear: FinancialYear;
     wfhMethod: 'fixed_rate' | 'actual_cost';
     totalHoursWorked: number;
@@ -160,6 +176,7 @@ export interface ActualCosts {
 
 export interface DepreciableAsset {
     id?: number;
+    profileId?: string;
     financialYear: FinancialYear;
     itemName: string;
     purchaseDate: Date;
@@ -174,6 +191,7 @@ export interface DepreciableAsset {
 
 export interface CryptoTransaction {
     id?: number;
+    profileId?: string;
     financialYear: FinancialYear;
     type: 'buy' | 'sell' | 'initial_balance';
     assetName: string;
