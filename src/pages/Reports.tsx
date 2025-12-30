@@ -29,6 +29,7 @@ export function Reports() {
         totalDeductions,
         safetyCheckItems,
         auditRiskLevel,
+        taxSettings,
     } = useTaxFlowStore();
 
     const [reportData, setReportData] = useState<ReportData>({
@@ -75,10 +76,7 @@ export function Reports() {
                 .equals(currentFinancialYear)
                 .toArray();
 
-            const properties = await db.properties
-                .where('financialYear')
-                .equals(currentFinancialYear)
-                .toArray();
+            const properties = await db.properties.toArray();
 
             const propertyExpenses = await db.propertyExpenses
                 .where('financialYear')
@@ -120,7 +118,9 @@ export function Reports() {
     };
 
     // Calculate derived values
-    const medicareLevy = estimatedTaxableIncome.mul(0.02);
+    const medicareLevy = estimatedTaxableIncome.mul(
+        (taxSettings?.hasPrivateHealthInsurance) ? 0 : 0.02
+    );
     const totalIncome = estimatedTaxableIncome.plus(totalDeductions);
 
     // Calculate totals from line items
@@ -145,8 +145,30 @@ export function Reports() {
 
     const formatCategory = (cat: string) => cat.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 
-    const handleExportPDF = () => {
-        const { incomeRecords, receipts, assets, workDeductions, accountantNotes } = reportData;
+    const handleExportPDF = async () => {
+        const { incomeRecords, receipts, assets, workDeductions, accountantNotes, properties, propertyExpenses } = reportData;
+        const hasPrivateHealthIns = taxSettings?.hasPrivateHealthInsurance || false;
+
+        // Load property income data
+        const propertyIncomeRecords = await db.propertyIncome
+            .where('financialYear')
+            .equals(currentFinancialYear)
+            .toArray();
+
+        // Group property expenses and income by property
+        const expensesByProperty = propertyExpenses.reduce((acc, expense) => {
+            if (!acc[expense.propertyId]) acc[expense.propertyId] = [];
+            acc[expense.propertyId].push(expense);
+            return acc;
+        }, {} as Record<number, typeof propertyExpenses>);
+
+        const incomeByProperty = propertyIncomeRecords.reduce((acc, income) => {
+            if (!acc[income.propertyId]) acc[income.propertyId] = 0;
+            acc[income.propertyId] += parseFloat(income.grossRent || '0') +
+                parseFloat(income.insurancePayouts || '0') +
+                parseFloat(income.otherIncome || '0');
+            return acc;
+        }, {} as Record<number, number>);
 
         const printContent = `
             <html>
@@ -175,6 +197,7 @@ export function Reports() {
                     .footer { margin-top: 40px; font-size: 10px; color: #9ca3af; text-align: center; border-top: 1px solid #e5e7eb; padding-top: 15px; }
                     .section { page-break-inside: avoid; }
                     .empty { color: #9ca3af; font-style: italic; padding: 15px; text-align: center; }
+                    .property-page { page-break-before: always; }
                 </style>
             </head>
             <body>
@@ -203,10 +226,10 @@ export function Reports() {
                     </div>
                 </div>
 
+                ${incomeRecords.length > 0 ? `
                 <!-- INCOME DETAILS -->
                 <div class="section">
                     <h3>1.1 Income Line Items</h3>
-                    ${incomeRecords.length > 0 ? `
                     <table>
                         <thead>
                             <tr>
@@ -236,8 +259,8 @@ export function Reports() {
                             </tr>
                         </tbody>
                     </table>
-                    ` : '<p class="empty">No income records entered.</p>'}
                 </div>
+                ` : ''}
                 
                 <!-- TAX LIABILITY -->
                 <div class="section">
@@ -246,10 +269,17 @@ export function Reports() {
                         <span class="label">Income Tax</span>
                         <span class="value tax">$${estimatedTaxPayable.toNumber().toLocaleString()}</span>
                     </div>
+                    ${!hasPrivateHealthIns ? `
                     <div class="summary-row">
                         <span class="label">Medicare Levy (2%)</span>
                         <span class="value tax">$${medicareLevy.toNumber().toLocaleString()}</span>
                     </div>
+                    ` : `
+                    <div class="summary-row">
+                        <span class="label">Medicare Levy</span>
+                        <span class="value">$0 (Exempt - Private Health Insurance)</span>
+                    </div>
+                    `}
                     <div class="total">
                         <div class="summary-row" style="border: none;">
                             <span class="label">Total Estimated Tax</span>
@@ -258,10 +288,10 @@ export function Reports() {
                     </div>
                 </div>
 
+                ${receipts.length > 0 ? `
                 <!-- WORK EXPENSES DETAILS -->
                 <div class="section">
                     <h2>3. Work-Related Expenses</h2>
-                    ${receipts.length > 0 ? `
                     <table>
                         <thead>
                             <tr>
@@ -288,13 +318,13 @@ export function Reports() {
                             </tr>
                         </tbody>
                     </table>
-                    ` : '<p class="empty">No work expenses entered.</p>'}
                 </div>
+                ` : ''}
 
+                ${workDeductions ? `
                 <!-- WORK FROM HOME -->
                 <div class="section">
                     <h2>4. Work From Home Deduction</h2>
-                    ${workDeductions ? `
                     <div class="summary-row">
                         <span class="label">Method Used</span>
                         <span class="value">${workDeductions.wfhMethod === 'fixed_rate' ? 'Fixed Rate (67c/hour)' : 'Actual Cost Method'}</span>
@@ -307,13 +337,13 @@ export function Reports() {
                         <span class="label">Calculated Deduction</span>
                         <span class="value">$${(parseFloat(String(workDeductions.totalHoursWorked || 0)) * 0.67).toFixed(2)}</span>
                     </div>
-                    ` : '<p class="empty">No WFH deductions entered.</p>'}
                 </div>
+                ` : ''}
 
+                ${assets.length > 0 ? `
                 <!-- ASSET DEPRECIATION -->
                 <div class="section">
                     <h2>5. Asset Depreciation Schedule</h2>
-                    ${assets.length > 0 ? `
                     <table>
                         <thead>
                             <tr>
@@ -342,15 +372,128 @@ export function Reports() {
                             `}).join('')}
                         </tbody>
                     </table>
-                    ` : '<p class="empty">No depreciable assets over $300.</p>'}
                 </div>
+                ` : ''}
 
+                ${properties.length > 0 ? properties.map((property, idx) => {
+                const propExpenses = expensesByProperty[property.id!] || [];
+                const totalPropExpenses = propExpenses.reduce((sum, e) => sum + parseFloat(e.amount), 0);
+                const rentalIncome = incomeByProperty[property.id!] || 0;
+                const netRentalIncome = rentalIncome - totalPropExpenses;
+
+                // Get ownership percentage (use first split or default to 100%)
+                const ownershipPct = property.ownershipSplit && property.ownershipSplit.length > 0
+                    ? property.ownershipSplit[0].percentage
+                    : 100;
+
+                return `
+                <!-- PROPERTY: ${property.address} -->
+                <div class="section property-page">
+                    <h2>Property ${idx + 1}: ${property.address}</h2>
+                    <div class="summary-row">
+                        <span class="label">Status</span>
+                        <span class="value">${property.status}</span>
+                    </div>
+                    <div class="summary-row">
+                        <span class="label">Purchase Date</span>
+                        <span class="value">${property.purchaseDate ? new Date(property.purchaseDate).toLocaleDateString('en-AU') : 'N/A'}</span>
+                    </div>
+                    <div class="summary-row">
+                        <span class="label">Ownership Percentage</span>
+                        <span class="value">${ownershipPct}%</span>
+                    </div>
+                    
+                    <h3>Rental Income</h3>
+                    ${ownershipPct !== 100 ? `
+                    <div class="summary-row">
+                        <span class="label">Full Property Income</span>
+                        <span class="value">$${rentalIncome.toLocaleString()}</span>
+                    </div>
+                    <div class="summary-row">
+                        <span class="label">Your ${ownershipPct}% Share</span>
+                        <span class="value" style="font-weight: bold; color: #10b981;">$${(rentalIncome * ownershipPct / 100).toLocaleString()}</span>
+                    </div>
+                    ` : `
+                    <div class="summary-row">
+                        <span class="label">Gross Rental Income</span>
+                        <span class="value">$${rentalIncome.toLocaleString()}</span>
+                    </div>
+                    `}
+                    
+                    ${propExpenses.length > 0 ? `
+                    <h3>Property Expenses</h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Category</th>
+                                <th>Description</th>
+                                <th class="text-right">Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${propExpenses.map(e => `
+                                <tr>
+                                    <td>${new Date(e.date).toLocaleDateString('en-AU')}</td>
+                                    <td>${formatCategory(e.category)}</td>
+                                    <td>${e.description || '-'}</td>
+                                    <td class="text-right">$${parseFloat(e.amount).toLocaleString()}</td>
+                                </tr>
+                            `).join('')}
+                            <tr style="font-weight: bold; background: #f9fafb;">
+                                <td colspan="3">Total Expenses</td>
+                                <td class="text-right">$${totalPropExpenses.toLocaleString()}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    ${ownershipPct !== 100 ? `
+                    <div class="summary-row" style="margin-top: 10px;">
+                        <span class="label">Your ${ownershipPct}% Share of Expenses</span>
+                        <span class="value" style="font-weight: bold;">$${(totalPropExpenses * ownershipPct / 100).toLocaleString()}</span>
+                    </div>
+                    ` : ''}
+                    ` : '<p class="empty">No expenses recorded for this property</p>'}
+                    
+                    ${property.hasDepreciationSchedule === 'yes' && property.depreciationScheduleDetails ? `
+                    <h3>Depreciation Schedule Details</h3>
+                    <div class="summary-row">
+                        <span class="label">Building Age</span>
+                        <span class="value">${property.buildingAge || 'Not specified'}</span>
+                    </div>
+                    <div class="summary-row">
+                        <span class="label">Building Value</span>
+                        <span class="value">${property.buildingValue ? '$' + parseFloat(property.buildingValue).toLocaleString() : 'Not specified'}</span>
+                    </div>
+                    <div style="margin-top: 10px; padding: 12px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px;">
+                        <strong style="display: block; margin-bottom: 8px; color: #374151;">Schedule Details:</strong>
+                        <pre style="white-space: pre-wrap; font-family: monospace; font-size: 10px; color: #6b7280; margin: 0;">${property.depreciationScheduleDetails}</pre>
+                    </div>
+                    ` : ''}
+                    
+                    <div class="total">
+                        ${ownershipPct !== 100 ? `
+                        <div class="summary-row" style="border: none;">
+                            <span class="label">Full Property Net Income</span>
+                            <span class="value ${netRentalIncome >= 0 ? '' : 'tax'}">${netRentalIncome >= 0 ? '+' : ''}$${netRentalIncome.toLocaleString()}</span>
+                        </div>
+                        <div class="summary-row" style="border: none; font-weight: bold;">
+                            <span class="label">Your ${ownershipPct}% Share (Claimable)</span>
+                            <span class="value ${netRentalIncome >= 0 ? '' : 'tax'}">${netRentalIncome >= 0 ? '+' : ''}$${(netRentalIncome * ownershipPct / 100).toLocaleString()}</span>
+                        </div>
+                        ` : `
+                        <div class="summary-row" style="border: none;">
+                            <span class="label">Net Rental Income</span>
+                            <span class="value ${netRentalIncome >= 0 ? '' : 'tax'}">${netRentalIncome >= 0 ? '+' : ''}$${netRentalIncome.toLocaleString()}</span>
+                        </div>
+                        `}
+                    </div>
                 </div>
+            `}).join('') : ''}
 
                 ${includeAccountantNotes && accountantNotes.length > 0 ? `
                 <!-- ACCOUNTANT NOTES -->
                 <div class="section" style="page-break-before: always;">
-                    <h2>6. Accountant Notes</h2>
+                    <h2>Accountant Notes</h2>
                     <p style="color: #6b7280; font-style: italic; margin-bottom: 15px;">Included for discussion with your registered tax agent.</p>
                     ${accountantNotes.map(n => `
                         <div style="margin-bottom: 20px; padding: 15px; background: #f9fafb; border-left: 4px solid ${n.priority === 'high' ? '#ef4444' : n.priority === 'medium' ? '#f59e0b' : '#3b82f6'}; border-radius: 4px;">
@@ -377,7 +520,10 @@ export function Reports() {
         if (printWindow) {
             printWindow.document.write(printContent);
             printWindow.document.close();
-            printWindow.print();
+            // Use setTimeout to prevent freezing the main app
+            setTimeout(() => {
+                printWindow.print();
+            }, 100);
         }
     };
 

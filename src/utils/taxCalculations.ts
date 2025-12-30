@@ -35,11 +35,18 @@ export function calculateIncomeTax(
 /**
  * Calculate Medicare Levy (2% of taxable income above threshold)
  * Threshold for 2024-25: $26,000 (singles)
+ * Returns $0 if hasPrivateHealthInsurance is true
  */
 export function calculateMedicareLevy(
     taxableIncome: Decimal,
-    threshold: number = 26000
+    threshold: number = 26000,
+    hasPrivateHealthInsurance: boolean = false
 ): Decimal {
+    // Exempt from Medicare levy if has private health insurance
+    if (hasPrivateHealthInsurance) {
+        return new Decimal(0);
+    }
+
     const income = taxableIncome.toNumber();
 
     if (income <= threshold) {
@@ -66,7 +73,11 @@ export function calculateTotalTax(
     taxSettings: TaxSettings
 ): { incomeTax: Decimal; medicareLevy: Decimal; totalTax: Decimal } {
     const incomeTax = calculateIncomeTax(taxableIncome, taxSettings.taxBrackets);
-    const medicareLevy = calculateMedicareLevy(taxableIncome);
+    const medicareLevy = calculateMedicareLevy(
+        taxableIncome,
+        26000,
+        taxSettings.hasPrivateHealthInsurance || false
+    );
     const totalTax = incomeTax.add(medicareLevy);
 
     return { incomeTax, medicareLevy, totalTax };

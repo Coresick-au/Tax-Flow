@@ -67,7 +67,7 @@ export function Settings() {
             }
 
             setImportStatus('success');
-            setTimeout(() => setImportStatus('idle'), 3000);
+            setTimeout(() => window.location.reload(), 1500);
         } catch (error) {
             console.error('Import failed:', error);
             setImportStatus('error');
@@ -175,6 +175,11 @@ export function Settings() {
                                     <>
                                         <Check className="w-4 h-4" />
                                         Downloaded!
+                                    </>
+                                ) : exportStatus === 'error' ? (
+                                    <>
+                                        <AlertTriangle className="w-4 h-4" />
+                                        Export Failed
                                     </>
                                 ) : (
                                     <>

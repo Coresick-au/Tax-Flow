@@ -257,6 +257,7 @@ export interface TaxSettings {
     mealAllowance: string;
     lowValuePoolThreshold: string;
     instantAssetWriteOffThreshold: string;
+    hasPrivateHealthInsurance?: boolean; // Exempt from Medicare levy if true
     createdAt: Date;
     updatedAt: Date;
 }

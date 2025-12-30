@@ -6,9 +6,12 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
-    hmr: true,
+    hmr: {
+      overlay: false,
+    },
   },
   optimizeDeps: {
     include: ['react', 'react-dom', 'zustand', 'recharts', 'lucide-react', 'decimal.js', 'dexie'],
+    exclude: ['@tailwindcss/vite'],
   },
 })

@@ -30,6 +30,7 @@ interface TaxFlowState {
     estimatedTaxPayable: Decimal;
     totalDeductions: Decimal;
     deductionCount: number;
+    hasFractionalOwnership: boolean;
 
     // Safety check
     safetyCheckItems: SafetyCheckItem[];
@@ -87,7 +88,10 @@ function isPropertyActiveInFY(property: { purchaseDate: Date; saleDate?: Date },
     const fyEnd = new Date(startYear + 1, 5, 30);    // June 30th of end year
 
     const purchaseDate = new Date(property.purchaseDate);
-    // If purchased after this FY ended, it doesn't count
+
+
+
+    // Exclude properties purchased after this FY ended
     if (purchaseDate > fyEnd) return false;
 
     // If sold, check if it was sold before this FY started
@@ -96,7 +100,7 @@ function isPropertyActiveInFY(property: { purchaseDate: Date; saleDate?: Date },
         if (saleDate < fyStart) return false;
     }
 
-    // Otherwise, it was held for at least one day in the FY
+    // Property was owned before or at FY start and not sold before FY
     return true;
 }
 
@@ -117,6 +121,7 @@ export const useTaxFlowStore = create<TaxFlowState>((set, get) => ({
     safetyCheckItems: [],
     auditRiskLevel: 'low',
     recentActivity: [],
+    hasFractionalOwnership: false,
 
     // Initialize the store
     initialize: async () => {
@@ -282,6 +287,8 @@ export const useTaxFlowStore = create<TaxFlowState>((set, get) => ({
                 }
             }
 
+            const hasFractionalOwnership = Array.from(ownershipMap.values()).some(fraction => fraction < 1);
+
             // Sum all property income (applying ownership split)
             const propertyIncomes = await db.propertyIncome
                 .where('financialYear')
@@ -419,6 +426,7 @@ export const useTaxFlowStore = create<TaxFlowState>((set, get) => ({
                 estimatedTaxPayable: taxPayable,
                 totalDeductions,
                 deductionCount,
+                hasFractionalOwnership,
             });
         } catch (error) {
             console.error('Failed to calculate tax position:', error);

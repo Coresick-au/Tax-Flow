@@ -24,6 +24,7 @@ export function ATOSettings() {
     const [wfhRate, setWfhRate] = useState('');
     const [vehicleRate, setVehicleRate] = useState('');
     const [mealAllowance, setMealAllowance] = useState('');
+    const [hasPrivateHealthInsurance, setHasPrivateHealthInsurance] = useState(false);
 
     // Initialize local state from taxSettings
     useEffect(() => {
@@ -32,6 +33,7 @@ export function ATOSettings() {
             setWfhRate(taxSettings.wfhFixedRate || '0.67');
             setVehicleRate(taxSettings.vehicleCentsPerKm || '85');
             setMealAllowance(taxSettings.mealAllowance || '36.40');
+            setHasPrivateHealthInsurance(taxSettings.hasPrivateHealthInsurance || false);
         }
     }, [taxSettings]);
 
@@ -47,6 +49,7 @@ export function ATOSettings() {
                 wfhFixedRate: wfhRate,
                 vehicleCentsPerKm: vehicleRate,
                 mealAllowance: mealAllowance,
+                hasPrivateHealthInsurance: hasPrivateHealthInsurance,
             };
             await setTaxSettings(updatedSettings);
             setSaveStatus('success');
@@ -259,6 +262,27 @@ export function ATOSettings() {
                                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => setMealAllowance(e.target.value)}
                                 leftIcon={<span className="text-text-muted">$</span>}
                             />
+                        </div>
+                    </div>
+
+                    {/* Medicare Levy Exemption */}
+                    <div className="mb-6 p-4 bg-background-elevated rounded-lg border border-border">
+                        <div className="flex items-start gap-3">
+                            <input
+                                type="checkbox"
+                                id="privateHealthInsurance"
+                                checked={hasPrivateHealthInsurance}
+                                onChange={(e) => setHasPrivateHealthInsurance(e.target.checked)}
+                                className="mt-1 w-4 h-4 rounded border-border text-accent focus:ring-accent"
+                            />
+                            <div className="flex-1">
+                                <label htmlFor="privateHealthInsurance" className="text-sm font-medium text-text-primary cursor-pointer block mb-1">
+                                    I have private health insurance
+                                </label>
+                                <p className="text-xs text-text-muted">
+                                    Check this if you have appropriate private hospital cover. You will be exempt from the 2% Medicare levy in tax calculations.
+                                </p>
+                            </div>
                         </div>
                     </div>
 

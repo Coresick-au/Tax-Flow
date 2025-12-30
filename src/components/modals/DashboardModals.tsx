@@ -15,7 +15,16 @@ interface ModalProps {
 // ----------------------------------------------------------------------
 export function TaxableIncomeModal({ isOpen, onClose }: ModalProps) {
     const { currentFinancialYear, currentProfileId } = useTaxFlowStore();
-    const [incomeItems, setIncomeItems] = useState<{ category: string; description: string; amount: Decimal; icon: any; type?: 'property'; propertyId?: number }[]>([]);
+    const [incomeItems, setIncomeItems] = useState<{
+        category: string;
+        description: string;
+        amount: Decimal;
+        icon: any;
+        type?: 'property';
+        propertyId?: number;
+        fullAmount?: Decimal;
+        ownershipPct?: number;
+    }[]>([]);
     const [total, setTotal] = useState<Decimal>(new Decimal(0));
 
     const fetchData = async () => {
@@ -45,22 +54,32 @@ export function TaxableIncomeModal({ isOpen, onClose }: ModalProps) {
             .filter(i => !i.profileId || i.profileId === currentProfileId)
             .toArray();
 
-        // Get property addresses for description
+        // Get property addresses and ownership percentages
         const properties = await db.properties.toArray();
 
-        // Aggregate by property
-        const rentalByProperty = new Map<number, { amount: Decimal; address: string }>();
+        // Aggregate by property with ownership info
+        const rentalByProperty = new Map<number, { fullAmount: Decimal; claimableAmount: Decimal; address: string; ownershipPct: number }>();
 
         rentalRecords.forEach(r => {
             const prop = properties.find(p => p.id === r.propertyId);
             const address = prop ? prop.address : `Unknown Property (ID: ${r.propertyId})`;
-            const amt = new Decimal(r.grossRent).add(new Decimal(r.otherIncome || 0));
+            const ownershipPct = prop?.ownershipSplit?.[0]?.percentage ?? 100;
+            const ownershipFraction = ownershipPct / 100;
+
+            const fullAmt = new Decimal(r.grossRent).add(new Decimal(r.otherIncome || 0));
+            const claimableAmt = fullAmt.mul(ownershipFraction);
 
             if (rentalByProperty.has(r.propertyId)) {
                 const existing = rentalByProperty.get(r.propertyId)!;
-                existing.amount = existing.amount.add(amt);
+                existing.fullAmount = existing.fullAmount.add(fullAmt);
+                existing.claimableAmount = existing.claimableAmount.add(claimableAmt);
             } else {
-                rentalByProperty.set(r.propertyId, { amount: amt, address });
+                rentalByProperty.set(r.propertyId, {
+                    fullAmount: fullAmt,
+                    claimableAmount: claimableAmt,
+                    address,
+                    ownershipPct
+                });
             }
         });
 
@@ -68,12 +87,14 @@ export function TaxableIncomeModal({ isOpen, onClose }: ModalProps) {
             items.push({
                 category: 'Property',
                 description: data.address,
-                amount: data.amount,
+                amount: data.claimableAmount, // Use claimable amount for total
                 icon: Building2,
                 type: 'property',
-                propertyId: id
+                propertyId: id,
+                fullAmount: data.fullAmount,
+                ownershipPct: data.ownershipPct
             });
-            totalAmount = totalAmount.add(data.amount);
+            totalAmount = totalAmount.add(data.claimableAmount); // Add claimable to total
         });
 
         // 3. Crypto Gains (Simplified)
@@ -129,11 +150,25 @@ export function TaxableIncomeModal({ isOpen, onClose }: ModalProps) {
                                     <div className="flex-1">
                                         <p className="font-medium text-sm">{item.description}</p>
                                         <p className="text-xs text-text-muted">{item.category}</p>
+                                        {item.type === 'property' && item.fullAmount && item.ownershipPct !== 100 && (
+                                            <div className="text-xs text-text-muted mt-1 space-y-0.5">
+                                                <div className="flex justify-between">
+                                                    <span>Full Property:</span>
+                                                    <span className="font-mono">{formatCurrency(item.fullAmount.toNumber())}</span>
+                                                </div>
+                                                <div className="flex justify-between font-medium text-success">
+                                                    <span>Your {item.ownershipPct}% Share:</span>
+                                                    <span className="font-mono">{formatCurrency(item.amount.toNumber())}</span>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                     <div className="flex items-center gap-2">
-                                        <span className="font-mono font-medium text-success">
-                                            {formatCurrency(item.amount.toNumber())}
-                                        </span>
+                                        {item.type !== 'property' || item.ownershipPct === 100 ? (
+                                            <span className="font-mono font-medium text-success">
+                                                {formatCurrency(item.amount.toNumber())}
+                                            </span>
+                                        ) : null}
                                         {item.type === 'property' && item.propertyId !== undefined && (
                                             <button
                                                 onClick={(e) => {
@@ -163,7 +198,7 @@ export function TaxableIncomeModal({ isOpen, onClose }: ModalProps) {
 export function TaxLiabilityModal({ isOpen, onClose }: ModalProps) {
     // This requires re-running the tax calc logic or fetching from store states if available.
     // Since store keeps the totals, we'll re-estimate or show what we have.
-    const { estimatedTaxableIncome, estimatedTaxPayable } = useTaxFlowStore();
+    const { estimatedTaxableIncome, estimatedTaxPayable, taxSettings } = useTaxFlowStore();
 
     // Simple breakdown visualization
     const taxableParam = estimatedTaxableIncome.toNumber();
@@ -223,9 +258,11 @@ export function TaxLiabilityModal({ isOpen, onClose }: ModalProps) {
                                 {formatCurrency(payableParam)} {/* Simplified as we don't have Withheld easily available without query */}
                             </span>
                         </div>
-                        <div className="p-2 bg-accent/10 rounded text-xs text-accent mt-2">
-                            <p>Note: This includes Medicare Levy estimate. Actual tax may vary based on offsets and surcharges.</p>
-                        </div>
+                        {!taxSettings?.hasPrivateHealthInsurance && (
+                            <div className="p-2 bg-accent/10 rounded text-xs text-accent mt-2">
+                                <p>Note: This includes Medicare Levy estimate. Actual tax may vary based on offsets and surcharges.</p>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
@@ -238,14 +275,20 @@ export function TaxLiabilityModal({ isOpen, onClose }: ModalProps) {
 // ----------------------------------------------------------------------
 export function TotalDeductionsModal({ isOpen, onClose }: ModalProps) {
     const { currentFinancialYear, currentProfileId } = useTaxFlowStore();
-    const [items, setItems] = useState<{ category: string; description?: string; amount: Decimal }[]>([]);
+    const [items, setItems] = useState<{
+        category: string;
+        description?: string;
+        amount: Decimal;
+        fullAmount?: Decimal;
+        ownershipPct?: number;
+    }[]>([]);
     const [total, setTotal] = useState<Decimal>(new Decimal(0));
 
     useEffect(() => {
         if (!isOpen) return;
 
         const fetchData = async () => {
-            const tempItems: { category: string; description?: string; amount: Decimal }[] = [];
+            const tempItems: { category: string; description?: string; amount: Decimal; fullAmount?: Decimal; ownershipPct?: number }[] = [];
             let totalAmount = new Decimal(0);
 
             // 1. General Receipts
@@ -264,37 +307,49 @@ export function TotalDeductionsModal({ isOpen, onClose }: ModalProps) {
             // ... Logic for work deduction calculation if needed ...
             // For now we skip detailed calculation, just acknowledge presence or placeholder
 
-            // 3. Property Expenses - Grouped by Property
+            // 3. Property Expenses - Grouped by Property with ownership
             const propExp = await db.propertyExpenses
                 .where('financialYear').equals(currentFinancialYear)
                 .filter(e => !e.profileId || e.profileId === currentProfileId)
                 .toArray();
 
-            // Get properties
+            // Get properties with ownership info
             const properties = await db.properties.toArray();
 
-            const expByProperty = new Map<number, { amount: Decimal; address: string }>();
+            const expByProperty = new Map<number, { fullAmount: Decimal; claimableAmount: Decimal; address: string; ownershipPct: number }>();
 
             propExp.forEach(e => {
                 const prop = properties.find(p => p.id === e.propertyId);
                 const address = prop ? prop.address : `Unknown Property (ID: ${e.propertyId})`;
-                const amt = new Decimal(e.amount);
+                const ownershipPct = prop?.ownershipSplit?.[0]?.percentage ?? 100;
+                const ownershipFraction = ownershipPct / 100;
+
+                const fullAmt = new Decimal(e.amount);
+                const claimableAmt = fullAmt.mul(ownershipFraction);
 
                 if (expByProperty.has(e.propertyId)) {
                     const existing = expByProperty.get(e.propertyId)!;
-                    existing.amount = existing.amount.add(amt);
+                    existing.fullAmount = existing.fullAmount.add(fullAmt);
+                    existing.claimableAmount = existing.claimableAmount.add(claimableAmt);
                 } else {
-                    expByProperty.set(e.propertyId, { amount: amt, address });
+                    expByProperty.set(e.propertyId, {
+                        fullAmount: fullAmt,
+                        claimableAmount: claimableAmt,
+                        address,
+                        ownershipPct
+                    });
                 }
             });
 
             expByProperty.forEach((data, _id) => {
                 tempItems.push({
                     category: 'Property Expenses',
-                    description: data.address, // Added description for property name
-                    amount: data.amount
+                    description: data.address,
+                    amount: data.claimableAmount, // Use claimable for total
+                    fullAmount: data.fullAmount,
+                    ownershipPct: data.ownershipPct
                 });
-                totalAmount = totalAmount.add(data.amount);
+                totalAmount = totalAmount.add(data.claimableAmount); // Add claimable to total
             });
 
             setItems(tempItems);
@@ -326,15 +381,29 @@ export function TotalDeductionsModal({ isOpen, onClose }: ModalProps) {
                         ) : (
                             items.map((item, idx) => (
                                 <div key={idx} className="flex items-center justify-between p-3 rounded-lg border border-border-muted">
-                                    <div className="flex flex-col">
+                                    <div className="flex flex-col flex-1">
                                         <span className="font-medium text-sm text-text-primary">{item.category}</span>
                                         {item.description && (
                                             <span className="text-xs text-text-secondary mt-0.5">{item.description}</span>
                                         )}
+                                        {item.category === 'Property Expenses' && item.fullAmount && item.ownershipPct !== 100 && (
+                                            <div className="text-xs text-text-muted mt-1 space-y-0.5">
+                                                <div className="flex justify-between">
+                                                    <span>Full Property:</span>
+                                                    <span className="font-mono">{formatCurrency(item.fullAmount.toNumber())}</span>
+                                                </div>
+                                                <div className="flex justify-between font-medium text-primary">
+                                                    <span>Your {item.ownershipPct}% Share:</span>
+                                                    <span className="font-mono">{formatCurrency(item.amount.toNumber())}</span>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
-                                    <span className="font-mono font-medium text-primary">
-                                        {item.amount.isZero() ? 'View Details' : formatCurrency(item.amount.toNumber())}
-                                    </span>
+                                    {item.category !== 'Property Expenses' || item.ownershipPct === 100 ? (
+                                        <span className="font-mono font-medium text-primary">
+                                            {item.amount.isZero() ? 'View Details' : formatCurrency(item.amount.toNumber())}
+                                        </span>
+                                    ) : null}
                                 </div>
                             ))
                         )}

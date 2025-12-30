@@ -99,6 +99,7 @@ export function Dashboard() {
         estimatedTaxableIncome,
         estimatedTaxPayable,
         totalDeductions,
+        hasFractionalOwnership,
 
         userProfile,
         auditRiskLevel,
@@ -225,7 +226,7 @@ export function Dashboard() {
                     title="Current Tax Liability"
                     value={`$${estimatedTaxPayable.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`}
                     trend={{ value: 1.1 }}
-                    subtitle="Based on resident tax rates"
+                    subtitle={hasFractionalOwnership ? "Adjusted for ownership share" : "Based on resident tax rates"}
                     icon={<AlertTriangle className="w-5 h-5 text-warning" />}
                     iconBgColor="bg-warning/20"
                     onClick={() => setActiveModal('liability')}

@@ -12,7 +12,8 @@ import {
 } from 'lucide-react';
 import { useTaxFlowStore } from '../stores/taxFlowStore';
 import { DashboardLayout } from '../components/layout';
-import { Card, CardHeader, Button, StatCard, Input, ConfirmDialog } from '../components/ui';
+import { Card, CardHeader, Button, StatCard, Input } from '../components/ui';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { db } from '../database/db';
 import { PropertyDepreciationHelper } from '../components/helpers/PropertyDepreciationHelper';
 import type { Property, PropertyIncome, PropertyExpense, PropertyLoan } from '../types';
@@ -28,10 +29,12 @@ const isPropertyRelevantForFY = (property: Property, fy: string) => {
     const purchased = new Date(property.purchaseDate);
     const sold = property.saleDate ? new Date(property.saleDate) : null;
 
-    // Purchased after this FY?
+
+
+    // Exclude properties purchased after this FY ended
     if (purchased > fyEnd) return false;
 
-    // Sold before this FY?
+    // Exclude properties sold before this FY started
     if (sold && sold < fyStart) return false;
 
     return true;
@@ -214,7 +217,7 @@ export function PropertyPortfolio() {
         { id: 'maintenance', label: 'Maintenance Log', count: maintenanceRecords.length },
         { id: 'depreciation', label: 'Depreciation' },
         { id: 'loans', label: 'Loans', count: propertyLoans.length },
-        { id: 'purchase', label: 'Purchase Data' },
+        { id: 'purchase', label: 'Purchase Data', count: selectedProperty?.costBase?.length || 0 },
     ];
 
 
@@ -1879,7 +1882,7 @@ export function PropertyPortfolio() {
                                                     <div>
                                                         <p className="text-sm text-text-secondary">Total Deductible Interest (FY{currentFinancialYear.slice(-4)})</p>
                                                         <p className="text-xs text-text-muted mt-1">
-                                                            This amount will be included in your property expenses
+                                                            Add this to your Recurrent Expenses to claim it as a deduction
                                                         </p>
                                                     </div>
                                                     <p className="text-2xl font-bold text-success">

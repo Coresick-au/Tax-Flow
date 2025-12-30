@@ -25,12 +25,15 @@ interface UsePWAReturn extends PWAState {
     promptInstall: () => Promise<boolean>;
 }
 
+// Check if we're in a valid browser context
+const isBrowser = typeof window !== 'undefined' && typeof document !== 'undefined';
+
 export function usePWA(): UsePWAReturn {
     // Defensive initialization for SSR/React 19 compatibility
     const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
     const [isInstallable, setIsInstallable] = useState(false);
     const [isInstalled, setIsInstalled] = useState(false);
-    const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
+    const [isOnline, setIsOnline] = useState(isBrowser ? navigator.onLine : true);
 
     useEffect(() => {
         // Check if already installed (standalone mode)

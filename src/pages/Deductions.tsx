@@ -9,7 +9,7 @@ import { db } from '../database/db';
 import { TaxDeductionModal } from '../components/modals/TaxDeductionModal';
 import { AssetModal } from '../components/modals/AssetModal';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
-import { Plus, DollarSign, Sparkles, Trash2, Home, Calculator, Briefcase, FileText } from 'lucide-react';
+import { Plus, DollarSign, Sparkles, Trash2, Home, Calculator, Briefcase, FileText, Info } from 'lucide-react';
 import type { WfhCalculationResult } from '../utils/wfhCalculator';
 import type { DepreciableAsset } from '../types';
 import Decimal from 'decimal.js';
@@ -38,6 +38,12 @@ export function Deductions() {
     const [assets, setAssets] = useState<DepreciableAsset[]>([]);
     const [deleteAssetConfirm, setDeleteAssetConfirm] = useState<{ isOpen: boolean; id: number | null; name: string }>({
         isOpen: false, id: null, name: ''
+    });
+
+    // Receipts state
+    const [receipts, setReceipts] = useState<any[]>([]);
+    const [deleteReceiptConfirm, setDeleteReceiptConfirm] = useState<{ isOpen: boolean; id: number | null; vendor: string }>({
+        isOpen: false, id: null, vendor: ''
     });
 
     useEffect(() => {
@@ -71,8 +77,9 @@ export function Deductions() {
         if (currentFinancialYear) {
             loadExistingWfh();
             loadAssets();
+            loadReceipts();
         }
-    }, [currentFinancialYear]);
+    }, [currentFinancialYear, currentProfileId]);
 
     const loadAssets = async () => {
         const assetList = await db.depreciableAssets
@@ -81,6 +88,15 @@ export function Deductions() {
             .filter(a => a.profileId === currentProfileId)
             .toArray();
         setAssets(assetList);
+    };
+
+    const loadReceipts = async () => {
+        const receiptList = await db.receipts
+            .where('financialYear')
+            .equals(currentFinancialYear)
+            .filter(r => r.profileId === currentProfileId)
+            .toArray();
+        setReceipts(receiptList);
     };
 
     const handleDeleteAsset = (asset: DepreciableAsset) => {
@@ -98,6 +114,23 @@ export function Deductions() {
             await refreshDashboard();
         }
         setDeleteAssetConfirm({ isOpen: false, id: null, name: '' });
+    };
+
+    const handleDeleteReceipt = (receipt: any) => {
+        setDeleteReceiptConfirm({
+            isOpen: true,
+            id: receipt.id || null,
+            vendor: receipt.vendor
+        });
+    };
+
+    const confirmDeleteReceipt = async () => {
+        if (deleteReceiptConfirm.id) {
+            await db.receipts.delete(deleteReceiptConfirm.id);
+            await loadReceipts();
+            await refreshDashboard();
+        }
+        setDeleteReceiptConfirm({ isOpen: false, id: null, vendor: '' });
     };
 
     const handleSaveWfh = async (result: WfhCalculationResult) => {
@@ -288,14 +321,71 @@ export function Deductions() {
                             title="Work Expenses"
                             subtitle="Uniforms, tools, professional subscriptions, and more"
                         />
-                        <div className="text-center py-12">
-                            <Briefcase className="w-12 h-12 text-text-muted mx-auto mb-4" />
-                            <p className="text-text-secondary mb-4">No work expenses recorded</p>
-                            <Button variant="secondary" onClick={() => setShowDeductionModal(true)}>
-                                <Plus className="w-4 h-4" />
-                                Add Expense
-                            </Button>
-                        </div>
+                        {receipts.length === 0 ? (
+                            <div className="text-center py-12">
+                                <Briefcase className="w-12 h-12 text-text-muted mx-auto mb-4" />
+                                <p className="text-text-secondary mb-4">No work expenses recorded</p>
+                                <Button variant="secondary" onClick={() => setShowDeductionModal(true)}>
+                                    <Plus className="w-4 h-4" />
+                                    Add Expense
+                                </Button>
+                            </div>
+                        ) : (
+                            <>
+                                <div className="border border-border rounded-lg overflow-hidden mb-4">
+                                    <div className="flex justify-end p-4 bg-background-secondary border-b border-border">
+                                        <Button onClick={() => setShowDeductionModal(true)}>
+                                            <Plus className="w-4 h-4" />
+                                            Add Expense
+                                        </Button>
+                                    </div>
+                                    <table className="w-full">
+                                        <thead className="bg-background-secondary">
+                                            <tr className="text-left text-xs text-text-muted uppercase tracking-wider">
+                                                <th className="px-4 py-3">Date</th>
+                                                <th className="px-4 py-3">Vendor</th>
+                                                <th className="px-4 py-3">Category</th>
+                                                <th className="px-4 py-3">Description</th>
+                                                <th className="px-4 py-3 text-right">Amount</th>
+                                                <th className="w-10"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {receipts.map(receipt => (
+                                                <tr key={receipt.id} className="border-t border-border hover:bg-background-elevated">
+                                                    <td className="px-4 py-3 text-text-secondary">
+                                                        {new Date(receipt.date).toLocaleDateString('en-AU')}
+                                                    </td>
+                                                    <td className="px-4 py-3 font-medium text-text-primary">{receipt.vendor}</td>
+                                                    <td className="px-4 py-3 text-text-secondary capitalize">
+                                                        {receipt.category.replace('_', ' ')}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-text-secondary">{receipt.description}</td>
+                                                    <td className="px-4 py-3 text-right font-medium">
+                                                        ${parseFloat(receipt.amount).toLocaleString('en-AU', { minimumFractionDigits: 2 })}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-right">
+                                                        <button
+                                                            onClick={() => handleDeleteReceipt(receipt)}
+                                                            className="p-1 rounded hover:bg-danger/20 text-text-muted hover:text-danger transition-colors"
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-text-secondary">
+                                        Total Expenses: <span className="font-bold text-accent">
+                                            ${receipts.reduce((sum, r) => sum + parseFloat(r.amount || '0'), 0).toLocaleString('en-AU', { minimumFractionDigits: 2 })}
+                                        </span>
+                                    </span>
+                                </div>
+                            </>
+                        )}
                     </Card>
                 )}
 
@@ -331,11 +421,49 @@ export function Deductions() {
                 )}
             </div>
 
+            {/* Receipt-Free Claims Reminder - Australia Only */}
+            <div className="mt-8 space-y-4">
+                <Card className="bg-primary/5 border-primary/20">
+                    <div className="flex gap-3">
+                        <div className="p-2 bg-primary/10 rounded-lg h-fit">
+                            <Info className="w-5 h-5 text-primary" />
+                        </div>
+                        <div>
+                            <h3 className="text-lg font-semibold text-text-primary mb-2">
+                                Helpful Reminders: No Receipt Claims (Australia Only)
+                            </h3>
+                            <p className="text-sm text-text-secondary mb-4">
+                                You can generally claim up to $300 in total work-related expenses without receipts, provided you actually spent the money and it relates to your job.
+                            </p>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="bg-background-secondary p-3 rounded-md border border-border">
+                                    <h4 className="font-medium text-text-primary text-sm mb-1">Laundry & Uniforms</h4>
+                                    <p className="text-xs text-text-secondary">
+                                        Claim up to $150 for cleaning occupation-specific clothing or protective gear. We all use the washing machine for work!
+                                    </p>
+                                </div>
+                                <div className="bg-background-secondary p-3 rounded-md border border-border">
+                                    <h4 className="font-medium text-text-primary text-sm mb-1">Overtime Meals</h4>
+                                    <p className="text-xs text-text-secondary">
+                                        If you received a specific overtime meal allowance under an award, you may be able to claim up to the reasonable limit set by the ATO without receipts.
+                                    </p>
+                                </div>
+                            </div>
+                            <p className="mt-4 text-[10px] text-text-muted italic">
+                                Disclaimer: These are general guides for the Australian tax system. Always consult with a tax professional or the ATO website for your specific situation.
+                            </p>
+                        </div>
+                    </div>
+                </Card>
+            </div>
 
             <TaxDeductionModal
                 isOpen={showDeductionModal}
                 onClose={() => setShowDeductionModal(false)}
-                onSave={() => refreshDashboard()}
+                onSave={() => {
+                    loadReceipts();
+                    refreshDashboard();
+                }}
                 currentFinancialYear={currentFinancialYear}
                 currentProfileId={currentProfileId}
             />
@@ -357,6 +485,14 @@ export function Deductions() {
                 confirmText="Delete Asset"
                 onConfirm={confirmDeleteAsset}
                 onCancel={() => setDeleteAssetConfirm({ isOpen: false, id: null, name: '' })}
+            />
+            <ConfirmDialog
+                isOpen={deleteReceiptConfirm.isOpen}
+                title="Delete Receipt"
+                message={`Are you sure you want to delete the receipt from "${deleteReceiptConfirm.vendor}"? This will affect your deductions.`}
+                confirmText="Delete Receipt"
+                onConfirm={confirmDeleteReceipt}
+                onCancel={() => setDeleteReceiptConfirm({ isOpen: false, id: null, vendor: '' })}
             />
         </DashboardLayout >
     );
