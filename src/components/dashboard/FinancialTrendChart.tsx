@@ -140,56 +140,58 @@ export function FinancialTrendChart() {
     }
 
     return (
-        <ResponsiveContainer width="100%" height={256}>
-            <AreaChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                <defs>
-                    <linearGradient id="colorIncome" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#10B981" stopOpacity={0.1} />
-                        <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
-                    </linearGradient>
-                    <linearGradient id="colorExpenses" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#EF4444" stopOpacity={0.1} />
-                        <stop offset="95%" stopColor="#EF4444" stopOpacity={0} />
-                    </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#374151" opacity={0.3} />
-                <XAxis
-                    dataKey="name"
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fill: '#9CA3AF', fontSize: 12 }}
-                    dy={10}
-                />
-                <YAxis
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fill: '#9CA3AF', fontSize: 12 }}
-                    tickFormatter={(value) => `$${value / 1000}k`}
-                />
-                <Tooltip
-                    contentStyle={{ backgroundColor: '#1F2937', borderColor: '#374151', borderRadius: '0.5rem' }}
-                    itemStyle={{ color: '#F3F4F6' }}
-                    formatter={(value: number) => [`$${value.toLocaleString()}`, undefined]}
-                />
-                <Area
-                    type="monotone"
-                    dataKey="income"
-                    stroke="#10B981"
-                    fillOpacity={1}
-                    fill="url(#colorIncome)"
-                    name="Income"
-                    strokeWidth={2}
-                />
-                <Area
-                    type="monotone"
-                    dataKey="expenses"
-                    stroke="#EF4444"
-                    fillOpacity={1}
-                    fill="url(#colorExpenses)"
-                    name="Expenses"
-                    strokeWidth={2}
-                />
-            </AreaChart>
-        </ResponsiveContainer>
+        <div style={{ width: '100%', height: 256, minHeight: 256 }}>
+            <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                    <defs>
+                        <linearGradient id="colorIncome" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#10B981" stopOpacity={0.1} />
+                            <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
+                        </linearGradient>
+                        <linearGradient id="colorExpenses" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#EF4444" stopOpacity={0.1} />
+                            <stop offset="95%" stopColor="#EF4444" stopOpacity={0} />
+                        </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#374151" opacity={0.3} />
+                    <XAxis
+                        dataKey="name"
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fill: '#9CA3AF', fontSize: 12 }}
+                        dy={10}
+                    />
+                    <YAxis
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fill: '#9CA3AF', fontSize: 12 }}
+                        tickFormatter={(value) => `$${value / 1000}k`}
+                    />
+                    <Tooltip
+                        contentStyle={{ backgroundColor: '#1F2937', borderColor: '#374151', borderRadius: '0.5rem' }}
+                        itemStyle={{ color: '#F3F4F6' }}
+                        formatter={(value: number) => [`$${value.toLocaleString()}`, undefined]}
+                    />
+                    <Area
+                        type="monotone"
+                        dataKey="income"
+                        stroke="#10B981"
+                        fillOpacity={1}
+                        fill="url(#colorIncome)"
+                        name="Income"
+                        strokeWidth={2}
+                    />
+                    <Area
+                        type="monotone"
+                        dataKey="expenses"
+                        stroke="#EF4444"
+                        fillOpacity={1}
+                        fill="url(#colorExpenses)"
+                        name="Expenses"
+                        strokeWidth={2}
+                    />
+                </AreaChart>
+            </ResponsiveContainer>
+        </div>
     );
 }

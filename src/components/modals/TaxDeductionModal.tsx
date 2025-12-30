@@ -2,7 +2,6 @@ import { useState, useRef } from 'react';
 import { X, Upload, FileText, AlertTriangle } from 'lucide-react';
 import { Button, Input } from '../ui';
 import { db } from '../../database/db';
-// import { useTaxFlowStore } from '../../stores/taxFlowStore';
 import type { ExpenseCategory, Receipt } from '../../types';
 
 interface TaxDeductionModalProps {
