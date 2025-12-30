@@ -614,7 +614,9 @@ export function Reports() {
                                 <span className="font-bold text-lg text-text-primary">${estimatedTaxableIncome.toNumber().toLocaleString()}</span>
                             </div>
                             <div className="flex justify-between items-center p-3 rounded-lg bg-danger/10 border border-danger/20">
-                                <span className="text-danger">Est. Tax + Medicare</span>
+                                <span className="text-danger">
+                                    {taxSettings?.hasPrivateHealthInsurance ? 'Est. Tax' : 'Est. Tax + Medicare'}
+                                </span>
                                 <span className="font-bold text-lg text-danger">${estimatedTaxPayable.plus(medicareLevy).toNumber().toLocaleString()}</span>
                             </div>
                         </div>
