@@ -8,6 +8,29 @@ import { db } from '../database/db';
 import type { IncomeRecord, Receipt, DepreciableAsset, Property, PropertyExpense, WorkDeductions, AccountantNote } from '../types';
 import Decimal from 'decimal.js';
 
+// Helper to check if property was owned during a specific FY
+function isPropertyActiveInFY(property: { purchaseDate: Date; saleDate?: Date }, fy: string): boolean {
+    const [startYearStr] = fy.split('-');
+    const startYear = parseInt(startYearStr, 10);
+
+    const fyStart = new Date(startYear, 6, 1);       // July 1st of start year
+    const fyEnd = new Date(startYear + 1, 5, 30);    // June 30th of end year
+
+    const purchaseDate = new Date(property.purchaseDate);
+
+    // Exclude properties purchased after this FY ended
+    if (purchaseDate > fyEnd) return false;
+
+    // If sold, check if it was sold before this FY started
+    if (property.saleDate) {
+        const saleDate = new Date(property.saleDate);
+        if (saleDate < fyStart) return false;
+    }
+
+    // Property was owned before or at FY start and not sold before FY
+    return true;
+}
+
 interface ReportData {
     incomeRecords: IncomeRecord[];
     receipts: Receipt[];
@@ -24,6 +47,7 @@ export function Reports() {
         isInitialized,
         currentFinancialYear,
         currentProfileId,
+        userProfile,
         estimatedTaxableIncome,
         estimatedTaxPayable,
         totalDeductions,
@@ -76,7 +100,12 @@ export function Reports() {
                 .equals(currentFinancialYear)
                 .toArray();
 
-            const properties = await db.properties.toArray();
+            const allProperties = await db.properties.toArray();
+            // Filter properties to only those active in the current financial year
+            const properties = allProperties.filter(p =>
+                (!p.profileId || p.profileId === currentProfileId) &&
+                isPropertyActiveInFY(p, currentFinancialYear)
+            );
 
             const propertyExpenses = await db.propertyExpenses
                 .where('financialYear')
@@ -203,7 +232,8 @@ export function Reports() {
             <body>
                 <h1>TaxFlow Australia</h1>
                 <div class="header-info">
-                    <p><strong>Tax Summary Report</strong> for Financial Year ${currentFinancialYear}</p>
+                    <p><strong>Tax Summary Report</strong> for <strong>${userProfile?.name || 'Unknown'}</strong></p>
+                    <p>Financial Year ${currentFinancialYear}</p>
                     <p>Generated: ${new Date().toLocaleDateString('en-AU', { dateStyle: 'full' })} at ${new Date().toLocaleTimeString('en-AU')}</p>
                 </div>
                 
@@ -575,7 +605,7 @@ export function Reports() {
                         subtitle="Estimated liability breakdown"
                     />
                     <div className="flex flex-col md:flex-row items-center gap-6">
-                        <div className="h-64 w-full md:w-1/2">
+                        <div className="h-64 w-full md:w-1/2 relative">
                             <ResponsiveContainer width="100%" height="100%">
                                 <PieChart>
                                     <Pie
@@ -598,6 +628,17 @@ export function Reports() {
                                     <Legend />
                                 </PieChart>
                             </ResponsiveContainer>
+                            {/* Centered percentage label */}
+                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ marginBottom: '24px' }}>
+                                <div className="text-center">
+                                    <div className="text-2xl font-bold text-danger">
+                                        {totalIncome.gt(0)
+                                            ? `${estimatedTaxPayable.plus(medicareLevy).div(totalIncome).mul(100).toFixed(1)}%`
+                                            : '0%'}
+                                    </div>
+                                    <div className="text-xs text-text-muted">Tax Rate</div>
+                                </div>
+                            </div>
                         </div>
                         <div className="w-full md:w-1/2 space-y-4">
                             <div className="flex justify-between items-center p-3 rounded-lg bg-background-elevated">
