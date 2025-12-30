@@ -28,7 +28,6 @@ const CATEGORY_LABELS: Record<ExpenseCategory, string> = {
 const GREY_AREA_CATEGORIES: ExpenseCategory[] = ['work_clothing', 'self_education', 'home_office', 'car_expenses'];
 
 export function TaxDeductionModal({ isOpen, onClose, onSave, currentFinancialYear, currentProfileId }: TaxDeductionModalProps) {
-    // const { currentFinancialYear, currentProfileId, refreshDashboard } = useTaxFlowStore(); // Moved to props to avoid hook error
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const [formData, setFormData] = useState({
@@ -40,6 +39,8 @@ export function TaxDeductionModal({ isOpen, onClose, onSave, currentFinancialYea
         attachment: null as File | null,
     });
 
+    const [errors, setErrors] = useState<Record<string, string>>({});
+
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
             setFormData(prev => ({ ...prev, attachment: e.target.files![0] }));
@@ -47,7 +48,17 @@ export function TaxDeductionModal({ isOpen, onClose, onSave, currentFinancialYea
     };
 
     const handleSave = async () => {
-        if (!formData.vendor || !formData.amount || !formData.date) return;
+        const newErrors: Record<string, string> = {};
+
+        if (!formData.vendor.trim()) newErrors.vendor = 'Vendor is required';
+        if (!formData.amount) newErrors.amount = 'Amount is required';
+        else if (isNaN(parseFloat(formData.amount)) || parseFloat(formData.amount) <= 0) newErrors.amount = 'Amount must be valid';
+        if (!formData.date) newErrors.date = 'Date is required';
+
+        if (Object.keys(newErrors).length > 0) {
+            setErrors(newErrors);
+            return;
+        }
 
         try {
             const receiptData: Omit<Receipt, 'id'> = {
@@ -67,11 +78,6 @@ export function TaxDeductionModal({ isOpen, onClose, onSave, currentFinancialYea
 
             await db.receipts.add(receiptData);
 
-            // Note: In a real app, we'd handle file upload to storage here
-
-            // Note: In a real app, we'd handle file upload to storage here
-
-            // await refreshDashboard(); // Handled by parent onSave
             onSave();
             onClose();
 
@@ -84,6 +90,7 @@ export function TaxDeductionModal({ isOpen, onClose, onSave, currentFinancialYea
                 description: '',
                 attachment: null,
             });
+            setErrors({});
         } catch (error) {
             console.error('Failed to save deduction:', error);
         }
@@ -110,17 +117,21 @@ export function TaxDeductionModal({ isOpen, onClose, onSave, currentFinancialYea
                             label="VENDOR / PAYEE"
                             placeholder="e.g. Officeworks"
                             value={formData.vendor}
-                            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                                setFormData(prev => ({ ...prev, vendor: e.target.value }))
-                            }
+                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                                setFormData(prev => ({ ...prev, vendor: e.target.value }));
+                                if (errors.vendor) setErrors(prev => ({ ...prev, vendor: '' }));
+                            }}
+                            error={errors.vendor}
                         />
                         <Input
                             label="DATE"
                             type="date"
                             value={formData.date}
-                            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                                setFormData(prev => ({ ...prev, date: e.target.value }))
-                            }
+                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                                setFormData(prev => ({ ...prev, date: e.target.value }));
+                                if (errors.date) setErrors(prev => ({ ...prev, date: '' }));
+                            }}
+                            error={errors.date}
                         />
                     </div>
 
@@ -131,9 +142,11 @@ export function TaxDeductionModal({ isOpen, onClose, onSave, currentFinancialYea
                             placeholder="0.00"
                             leftIcon={<span className="text-text-muted">$</span>}
                             value={formData.amount}
-                            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                                setFormData(prev => ({ ...prev, amount: e.target.value }))
-                            }
+                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                                setFormData(prev => ({ ...prev, amount: e.target.value }));
+                                if (errors.amount) setErrors(prev => ({ ...prev, amount: '' }));
+                            }}
+                            error={errors.amount}
                         />
                         <div>
                             <label className="block text-xs text-text-muted mb-1.5">CATEGORY</label>

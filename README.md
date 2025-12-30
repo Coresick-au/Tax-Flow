@@ -71,3 +71,7 @@ export default defineConfig([
   },
 ])
 ```
+
+## Database Schema Changes (Dec 2025)
+
+To support multiple user profiles within a single application instance, a profileId column (string) was added to all key transactional tables (eceipts, income, propertyExpenses, 	axSettings, etc.). This allows data to be partitioned by user profile while stored in the same IndexedDB instance. For backward compatibility with legacy data, queries include a fallback check (e.g., !record.profileId) to count orphaned records as belonging to the active profile or a default legacy profile. The userProfile table manages these identities, linking profileId to names and specific tax settings.

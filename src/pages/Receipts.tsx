@@ -13,6 +13,7 @@ import { useTaxFlowStore } from '../stores/taxFlowStore';
 import { db } from '../database/db';
 import type { Receipt, ExpenseCategory } from '../types';
 import Decimal from 'decimal.js';
+import { compressImage } from '../utils/imageUtils';
 
 // Grey area categories that trigger warnings
 const GREY_AREA_CATEGORIES: ExpenseCategory[] = ['work_clothing', 'self_education', 'home_office', 'car_expenses'];
@@ -41,6 +42,7 @@ export function Receipts() {
     const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; id: number | null; vendor: string }>({
         isOpen: false, id: null, vendor: ''
     });
+    const [isCompressing, setIsCompressing] = useState(false);
 
     const [formData, setFormData] = useState({
         date: '',
@@ -160,11 +162,44 @@ export function Receipts() {
         setDeleteConfirm({ isOpen: false, id: null, vendor: '' });
     };
 
+    // File Validation Constants
+    const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB limit for PDFs
+    const ALLOWED_FILE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+
     // Handle file selection
-    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
-        if (file) {
+        if (!file) return;
+
+        // Reset input value to allow re-selecting same file if needed
+        if (fileInputRef.current) fileInputRef.current.value = '';
+
+        // Validate type
+        if (!ALLOWED_FILE_TYPES.includes(file.type)) {
+            alert('Invalid file type. Please upload a JPG, PNG, WebP image or PDF.');
+            return;
+        }
+
+        // Handle PDFs (Strict 5MB limit, no compression)
+        if (file.type === 'application/pdf') {
+            if (file.size > MAX_FILE_SIZE) {
+                alert(`PDF is too large. Maximum size is 5MB. Your file is ${(file.size / (1024 * 1024)).toFixed(1)}MB.`);
+                return;
+            }
             setFormData(prev => ({ ...prev, attachment: file }));
+            return;
+        }
+
+        // Handle Images (Auto-compress if needed)
+        try {
+            setIsCompressing(true);
+            const compressedFile = await compressImage(file);
+            setFormData(prev => ({ ...prev, attachment: compressedFile }));
+        } catch (error) {
+            console.error('Compression failed:', error);
+            alert('Failed to process image. Please try a different file.');
+        } finally {
+            setIsCompressing(false);
         }
     };
 
@@ -432,32 +467,42 @@ export function Receipts() {
                                 />
                                 <button
                                     type="button"
-                                    onClick={() => fileInputRef.current?.click()}
-                                    className="w-full p-4 border-2 border-dashed border-border rounded-lg flex flex-col items-center gap-2 hover:border-accent hover:bg-accent/5 transition-colors"
+                                    onClick={() => !isCompressing && fileInputRef.current?.click()}
+                                    disabled={isCompressing}
+                                    className={`w-full p-4 border-2 border-dashed border-border rounded-lg flex flex-col items-center gap-2 transition-colors ${isCompressing ? 'opacity-50 cursor-wait' : 'hover:border-accent hover:bg-accent/5'}`}
                                 >
-                                    {formData.attachment ? (
+                                    {isCompressing ? (
+                                        <>
+                                            <Upload className="w-8 h-8 text-accent animate-pulse" />
+                                            <span className="text-sm text-text-primary">Compressing image...</span>
+                                            <span className="text-xs text-text-muted">Please wait</span>
+                                        </>
+                                    ) : formData.attachment ? (
                                         <>
                                             <FileText className="w-8 h-8 text-accent" />
                                             <span className="text-sm text-text-primary">{formData.attachment.name}</span>
-                                            <span className="text-xs text-text-muted">Click to change</span>
+                                            <span className="text-xs text-text-muted">
+                                                {(formData.attachment.size / 1024).toFixed(1)} KB • Click to change
+                                            </span>
                                         </>
                                     ) : (
                                         <>
                                             <Upload className="w-8 h-8 text-text-muted" />
                                             <span className="text-sm text-text-secondary">Upload receipt image or PDF</span>
+                                            <span className="text-[10px] text-text-muted mt-1">Images auto-compressed • Max 5MB PDF</span>
                                         </>
                                     )}
                                 </button>
                             </div>
-                        </div>
 
-                        <div className="flex gap-3 mt-6">
-                            <Button onClick={handleSaveReceipt} className="flex-1">
-                                {editingId ? 'Update Receipt' : 'Save Receipt'}
-                            </Button>
-                            <Button variant="secondary" onClick={() => setShowAddModal(false)}>
-                                Cancel
-                            </Button>
+                            <div className="flex gap-3 mt-6">
+                                <Button onClick={handleSaveReceipt} className="flex-1">
+                                    {editingId ? 'Update Receipt' : 'Save Receipt'}
+                                </Button>
+                                <Button variant="secondary" onClick={() => setShowAddModal(false)}>
+                                    Cancel
+                                </Button>
+                            </div>
                         </div>
                     </div>
                 </div>

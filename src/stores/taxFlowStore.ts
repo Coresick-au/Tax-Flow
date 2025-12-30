@@ -263,7 +263,23 @@ export const useTaxFlowStore = create<TaxFlowState>((set, get) => ({
         }
     },
 
-    // Calculate tax position
+    /**
+     * Calculates the user's estimated tax position for the current financial year.
+     *
+     * This function aggregates income and deductions from various multiple sources:
+     * 1. **Property Income & Expenses**: Calculates ownership-weighted income (rent, payouts) and expenses using the property's `ownershipSplit`.
+     * 2. **General Income**: Sums up salary, dividends, and other income sources from `db.income`.
+     * 3. **Crypto Gains**: Calculates strictly FIFO capital gains from `db.cryptoTransactions`.
+     * 4. **Deductions**: Aggregates general receipts (`db.receipts`), work-from-home deductions (`db.workDeductions`), and depreciable asset write-offs (`db.depreciableAssets`).
+     *
+     * It then computes:
+     * - `totalIncome`: Gross income from all sources.
+     * - `totalDeductions`: Total allowable deductions.
+     * - `estimatedTaxableIncome`: Max(Total Income - Total Deductions, 0).
+     * - `estimatedTaxPayable`: Applies the progressive tax brackets from `taxSettings` to the taxable income.
+     *
+     * Resulting values are updated in the store state (`estimatedTaxableIncome`, `estimatedTaxPayable`, `totalDeductions`).
+     */
     calculateTaxPosition: async () => {
         const { currentFinancialYear, taxSettings, currentProfileId } = get();
 

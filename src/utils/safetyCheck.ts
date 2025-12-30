@@ -140,6 +140,8 @@ export function calculateSafetyCheck(
     let warningCount = 0;
     let dangerCount = 0;
 
+    const MATERIALITY_THRESHOLD = 300;
+
     // Check each deduction category
     for (const [category, userAmount] of Object.entries(userDeductions)) {
         const atoAverage = occupation.averages[category] || 0;
@@ -166,9 +168,15 @@ export function calculateSafetyCheck(
             message = `${((ratio - 1) * 100).toFixed(0)}% above ATO average - may attract scrutiny`;
             warningCount++;
         } else {
-            status = 'danger';
-            message = `Significantly above ATO average - high audit risk`;
-            dangerCount++;
+            // Apply Materiality Threshold: If amount is small (< $300), don't flag as danger
+            if (userAmount.toNumber() <= MATERIALITY_THRESHOLD) {
+                status = 'safe'; // or 'warning' if preferred, but 'safe' avoids alarm for trivial amounts
+                message = 'Above average percentage, but amount is low (low risk)';
+            } else {
+                status = 'danger';
+                message = `Significantly above ATO average - high audit risk`;
+                dangerCount++;
+            }
         }
 
         items.push({
